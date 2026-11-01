@@ -57,6 +57,5 @@ jobs:
     needs: deploy
     uses: leoserverteam/DevOpsTemplates/.github/workflows/deploynginx.yml@main
     with:
-      config_path: nginx/quest.conf
-      site_name: quest.leonet.site
+      conf_source_dir: "./nginx"
     secrets: inherit
