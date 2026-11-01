@@ -47,7 +47,7 @@ jobs:
 
   deploy:
     needs: prepare-env
-    uses: LeoNetworking/DevOpsTemplates/.github/workflows/fullstack-compose.yml@main
+    uses: leoserverteam/DevOpsTemplates/.github/workflows/fullstack-compose.yml@main
     with:
       project_name: quest
       extra_paths: "backend frontend config nginx data"
