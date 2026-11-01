@@ -9,7 +9,11 @@ from app.core.config import settings
 
 class QuestionsService:
     def __init__(self, config_path: str = None):
-        self.config_path = config_path or settings.QUESTIONS_CONFIG_PATH
+        self.config_path = (
+            config_path
+            or settings.QUESTIONS_CONFIG_PATH
+            or "/app/config/questions.yaml"
+        )
         self._config: Dict[str, Any] = {}
         self._load()
 

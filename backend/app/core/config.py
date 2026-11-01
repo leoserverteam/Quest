@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from pydantic import Field
+from pydantic import Field, field_validator
 from typing import List
 
 
@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     RATE_LIMIT_EDIT: str = "60/hour"
 
     QUESTIONS_CONFIG_PATH: str = "/app/config/questions.yaml"
+
+    @field_validator("QUESTIONS_CONFIG_PATH")
+    @classmethod
+    def _default_questions_path(cls, value: str) -> str:
+        # Пустая переменная окружения (например, незаполненная GitHub Variable)
+        # не должна ломать запуск приложения.
+        return value or "/app/config/questions.yaml"
 
     class Config:
         env_file = ".env"

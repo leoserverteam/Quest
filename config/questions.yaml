@@ -52,7 +52,7 @@ categories:
         title: Telegram
         type: text
         required: false
-        description: @username или ссылка
+        description: "@username или ссылка"
       - id: vk
         title: VK
         type: text
