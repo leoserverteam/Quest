@@ -18,7 +18,7 @@ export default function Edit() {
       setProfile(r.data.profile)
       setDesign(r.data.design || {})
       const ans: any = {}
-      Object.entries(r.data.answers || {}).forEach(([k, v]: any) => { ans[k] = v?.value })
+      Object.entries(r.data.answers || {}).forEach(([k, v]: any) => { ans[k] = (v as any)?.value })
       setAnswers(ans)
     })
   }, [token])
@@ -40,7 +40,6 @@ export default function Edit() {
     await api.put('/edit/me/design', design, { headers: { 'X-Edit-Token': token } })
     setMsg('Сохранено')
     setTimeout(() => setMsg(''), 1500)
-    // preview
     const root = document.documentElement
     Object.entries(design).forEach(([k, v]: any) => {
       if (k === 'preset') return
@@ -152,7 +151,7 @@ export default function Edit() {
                       {q.type === 'date' && <input type="date" className="input w-full px-3 py-2" value={answers[q.id] || ''} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} />}
                       {q.type === 'url' && <input type="url" className="input w-full px-3 py-2" value={answers[q.id] || ''} onChange={e => setAnswers({ ...answers, [q.id]: e.target.value })} />}
                       {q.type === 'boolean' && (
-                        <label class className="flex items-center gap-2">
+                        <label className="flex items-center gap-2">
                           <input type="checkbox" checked={!!answers[q.id]} onChange={e => setAnswers({ ...answers, [q.id]: e.target.checked })} />
                           <span>Да/Нет</span>
                         </label>
