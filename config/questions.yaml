@@ -1,0 +1,122 @@
+categories:
+  - id: about
+    title: О себе
+    questions:
+      - id: nickname
+        title: Как тебя обычно называют?
+        type: text
+        required: true
+        description: Короткое имя или никнейм
+      - id: bio
+        title: Коротко о себе
+        type: textarea
+        required: false
+        description: Несколько слов о себе
+      - id: age
+        title: Сколько тебе лет?
+        type: number
+        required: false
+      - id: birthday
+        title: День рождения
+        type: date
+        required: false
+
+  - id: interests
+    title: Интересы
+    questions:
+      - id: hobbies
+        title: Чем увлекаешься?
+        type: textarea
+        required: false
+      - id: music
+        title: Какую музыку слушаешь?
+        type: textarea
+        required: false
+      - id: games
+        title: Любимые игры
+        type: textarea
+        required: false
+      - id: movies
+        title: Любимые фильмы/сериалы
+        type: textarea
+        required: false
+
+  - id: contacts
+    title: Контакты и ссылки
+    questions:
+      - id: website
+        title: Сайт
+        type: url
+        required: false
+      - id: telegram
+        title: Telegram
+        type: text
+        required: false
+        description: @username или ссылка
+      - id: vk
+        title: VK
+        type: text
+        required: false
+      - id: discord
+        title: Discord
+        type: text
+        required: false
+      - id: looking_for
+        title: С кем хочу познакомиться/поговорить
+        type: select
+        required: false
+        options:
+          - value: friends
+            label: Друзья
+          - value: chat
+            label: Просто поболтать
+          - value: projects
+            label: Совместные проекты
+          - value: anything
+            label: Всё равно
+
+  - id: fun
+    title: Разное
+    questions:
+      - id: mood
+        title: Текущее настроение
+        type: select
+        required: false
+        options:
+          - value: good
+            label: Хорошее
+          - value: neutral
+            label: Нейтральное
+          - value: bad
+            label: Не очень
+          - value: weird
+            label: Странное
+      - id: open_to_chat
+        title: Открыт(а) к диалогу?
+        type: boolean
+        required: false
+      - id: facts
+        title: Интересный факт о себе
+        type: textarea
+        required: false
+      - id: tags
+        title: Теги о себе
+        type: multiselect
+        required: false
+        options:
+          - value: introvert
+            label: Интроверт
+          - value: extrovert
+            label: Экстраверт
+          - value: nightowl
+            label: Сова
+          - value: earlybird
+            label: Жаворонок
+          - value: gamer
+            label: Геймер
+          - value: artist
+            label: Творец
+          - value: student
+            label: Студент
+          - value: it
+            label: IT

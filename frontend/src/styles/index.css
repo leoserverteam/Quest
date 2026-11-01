@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --q-bg: #0f1026;
+  --q-text: #f4f4f9;
+  --q-heading: #ffffff;
+  --q-accent: #7c3aed;
+  --q-card: #1f2237;
+  --q-radius: 12px;
+}
+
+body {
+  background: var(--q-bg);
+  color: var(--q-text);
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+}
+
+.card {
+  background: var(--q-card);
+  border-radius: var(--q-radius);
+}
+.btn {
+  background: var(--q-accent);
+  color: white;
+  border-radius: var(--q-radius);
+}
+.input, .textarea, .select {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: var(--q-radius);
+  color: var(--q-text);
+}
+h1,h2,h3,h4,h5,h6 {
+  color: var(--q-heading);
+}
+a {
+  color: var(--q-accent);
+}
