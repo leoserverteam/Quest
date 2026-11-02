@@ -38,7 +38,7 @@ def vk_login(request: Request, response: Response):
 
 @router.get("/auth/vk/callback")
 @limiter.limit(settings.RATE_LIMIT_AUTH)
-async def vk_callback(request: Request, response: Response, code: str = None, state: str = None, db: Session = Depends(get_db)):
+async def vk_callback(request: Request, response: Response, code: str = None, state: str = None, device_id: str = None, db: Session = Depends(get_db)):
     if not code or not state or request.cookies.get("vk_state") != state:
         raise HTTPException(400)
     cv = request.cookies.get("vk_verifier")
@@ -46,25 +46,45 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
         raise HTTPException(400)
     response.delete_cookie("vk_state", path="/")
     response.delete_cookie("vk_verifier", path="/")
+
+    base_data = {
+        "grant_type": "authorization_code",
+        "client_id": settings.VK_CLIENT_ID,
+        "code": code,
+        "code_verifier": cv,
+        "redirect_uri": settings.VK_REDIRECT_URI,
+    }
+    if device_id:
+        base_data["device_id"] = device_id
+
+    td = None
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as cl:
-        data = {
-            "grant_type": "authorization_code",
-            "client_id": settings.VK_CLIENT_ID,
-            "code": code,
-            "code_verifier": cv,
-            "redirect_uri": settings.VK_REDIRECT_URI,
-        }
-        r = await cl.post("https://id.vk.com/oauth2/token", data=data, headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"})
-        if r.status_code != 200 or "application/json" not in r.headers.get("content-type", "") or r.text.strip().startswith("<"):
-            r = await cl.post("https://id.vk.com/oauth2/token", data=data)
-        if r.status_code != 200 or r.text.strip().startswith("<"):
-            r = await cl.post("https://oauth.vk.com/access_token", data={**data, "client_secret": settings.VK_CLIENT_SECRET} if settings.VK_CLIENT_SECRET else data)
-        try:
-            td = r.json()
-        except Exception:
-            raise HTTPException(status_code=502, detail={"status": r.status_code, "ct": r.headers.get("content-type"), "body": r.text[:800]})
+        for payload in [
+            base_data,
+            {**base_data, "client_secret": settings.VK_CLIENT_SECRET} if getattr(settings, "VK_CLIENT_SECRET", None) else None,
+        ]:
+            if not payload:
+                continue
+            for url in ["https://id.vk.com/oauth2/token", "https://oauth.vk.com/access_token"]:
+                try:
+                    r = await cl.post(url, data=payload, headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"})
+                    text = r.text
+                    if text.strip().startswith("<"):
+                        continue
+                    try:
+                        j = r.json()
+                        if isinstance(j, dict) and (j.get("access_token") or j.get("user_id")):
+                            td = j
+                            break
+                    except Exception:
+                        continue
+                except Exception:
+                    continue
+            if td:
+                break
+
     if not isinstance(td, dict) or not td.get("access_token"):
-        raise HTTPException(status_code=502, detail={"status": r.status_code, "body": td})
+        raise HTTPException(status_code=502, detail="vk_token_failed")
     access_token = td["access_token"]
     vk_id = td.get("user_id")
     if vk_id is not None:
