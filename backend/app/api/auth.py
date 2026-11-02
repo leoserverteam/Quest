@@ -57,8 +57,8 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
 
     payload = {
         "grant_type": "authorization_code",
-        "client_id": settings.VK_CLIENT_ID,
         "code": code,
+        "client_id": settings.VK_CLIENT_ID,
         "code_verifier": code_verifier,
         "redirect_uri": settings.VK_REDIRECT_URI,
     }
@@ -66,21 +66,28 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
         payload["device_id"] = device_id
 
     token_data = None
-    async with httpx.AsyncClient(timeout=30, follow_redirects=False) as client:
-        resp = await client.post(
-            "https://id.vk.com/oauth2/token",
-            data=payload,
-            headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
-        )
-        text = resp.text
-        if resp.status_code == 200 and not text.strip().startswith("<"):
-            try:
-                token_data = resp.json()
-            except Exception:
-                token_data = None
+    async with httpx.AsyncClient(timeout=30) as client:
+        try:
+            resp = await client.post(
+                "https://id.vk.com/oauth2/token",
+                data=payload,
+            )
+            ctype = resp.headers.get("content-type", "")
+            if "application/json" in ctype and not resp.text.strip().startswith("<"):
+                try:
+                    token_data = resp.json()
+                except Exception:
+                    pass
+            elif resp.status_code == 200 and resp.text.strip().startswith("{"):
+                try:
+                    token_data = resp.json()
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
     if not isinstance(token_data, dict) or not token_data.get("access_token"):
-        raise HTTPException(status_code=502, detail="vk_token_exchange_failed")
+        raise HTTPException(status_code=502, detail={"error": "token_failed"})
 
     access_token = token_data["access_token"]
     vk_id = token_data.get("user_id")
