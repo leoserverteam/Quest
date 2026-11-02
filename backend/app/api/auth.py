@@ -32,7 +32,7 @@ def vk_login(request: Request, response: Response):
     cv, cc = _gen()
     response.set_cookie("vk_state", st, httponly=True, samesite="lax", secure=settings.APP_ENV=="production", max_age=600, path="/")
     response.set_cookie("vk_verifier", cv, httponly=True, samesite="lax", secure=settings.APP_ENV=="production", max_age=600, path="/")
-    p = {"client_id": settings.VK_CLIENT_ID, "redirect_uri": settings.VK_REDIRECT_URI, "response_type": "code", "state": st, "code_challenge": cc, "code_challenge_method": "S256", "scope": "email"}
+    p = {"client_id": settings.VK_CLIENT_ID, "redirect_uri": settings.VK_REDIRECT_URI, "response_type": "code", "state": st, "code_challenge": cc, "code_challenge_method": "S256"}
     return {"url": "https://id.vk.com/authorize?" + urlencode(p)}
 
 
