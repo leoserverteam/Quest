@@ -40,6 +40,11 @@ app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads"
 
 # create tables
 Base.metadata.create_all(bind=engine)
+try:
+    from app.migrations_fix import apply_fallback_migrations
+    apply_fallback_migrations()
+except Exception as e:
+    print(f"Fallback migrations failed: {e}")
 
 # start questions watcher
 try:
