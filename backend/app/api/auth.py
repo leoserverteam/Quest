@@ -20,9 +20,9 @@ router = APIRouter()
 
 
 def _generate_pkce_pair():
-    code_verifier = secrets.token_urlsafe(64)
-    digest = hashlib.sha256(code_verifier.encode("utf-8")).digest()
-    code_challenge = base64.urlsafe_b64encode(digest).decode("utf-8").rstrip("=")
+    code_verifier = secrets.token_urlsafe(43)
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
     return code_verifier, code_challenge
 
 
@@ -36,9 +36,10 @@ def vk_login(request: Request, response: Response):
     response.set_cookie("vk_verifier", code_verifier, httponly=True, samesite="lax", max_age=600, path="/")
 
     params = {
-        "response_type": "code",
         "client_id": settings.VK_CLIENT_ID,
         "redirect_uri": settings.VK_REDIRECT_URI,
+        "response_type": "code",
+        "scope": "email",
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
@@ -49,12 +50,11 @@ def vk_login(request: Request, response: Response):
 
 @router.get("/auth/vk/callback")
 @limiter.limit(settings.RATE_LIMIT_AUTH)
-async def vk_callback(request: Request, response: Response, code: str = None, state: str = None, device_id: str = None, db: Session = Depends(get_db)):
+async def vk_callback(request: Request, response: Response, code: str = None, state: str = None, db: Session = Depends(get_db)):
     if not code or not state:
         raise HTTPException(status_code=400, detail="Missing code/state")
 
-    cookie_state = request.cookies.get("vk_state")
-    if not cookie_state or cookie_state != state:
+    if request.cookies.get("vk_state") != state:
         raise HTTPException(status_code=400, detail="Invalid state")
 
     code_verifier = request.cookies.get("vk_verifier")
@@ -64,35 +64,33 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
     response.delete_cookie("vk_state", path="/")
     response.delete_cookie("vk_verifier", path="/")
 
-    data = {
+    body = {
         "grant_type": "authorization_code",
-        "code": code,
         "client_id": settings.VK_CLIENT_ID,
-        "code_verifier": code_verifier,
+        "code": code,
         "redirect_uri": settings.VK_REDIRECT_URI,
+        "code_verifier": code_verifier,
     }
-    if device_id:
-        data["device_id"] = device_id
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post("https://id.vk.com/oauth2/token", data=data)
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as client:
+        resp = await client.post("https://id.vk.com/oauth2/token", data=body)
         try:
             token_data = resp.json()
         except Exception:
             raise HTTPException(status_code=502, detail=resp.text)
 
-    if resp.status_code != 200 or not isinstance(token_data, dict) or not token_data.get("access_token"):
+    if resp.status_code != 200 or not token_data.get("access_token"):
         raise HTTPException(status_code=502, detail=token_data)
 
     access_token = token_data["access_token"]
     vk_id = token_data.get("user_id")
-    if vk_id is not None:
+    if vk_id:
         vk_id = str(vk_id)
 
     info = {}
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post("https://id.vk.com/oauth2/user_info", data={"client_id": settings.VK_CLIENT_ID, "access_token": access_token})
+            r = await client.get(f"https://id.vk.com/oauth2/user_info?access_token={access_token}&client_id={settings.VK_CLIENT_ID}")
             info = r.json()
     except Exception:
         info = {}
@@ -129,15 +127,7 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
     db.refresh(user)
 
     session_token = create_session(db, user.id, request)
-    response.set_cookie(
-        settings.SESSION_COOKIE_NAME,
-        session_token,
-        httponly=True,
-        samesite="lax",
-        secure=settings.APP_ENV == "production",
-        max_age=settings.SESSION_TTL_HOURS * 3600,
-        path="/",
-    )
+    response.set_cookie(settings.SESSION_COOKIE_NAME, session_token, httponly=True, samesite="lax", secure=settings.APP_ENV == "production", max_age=settings.SESSION_TTL_HOURS * 3600, path="/")
     return Response(status_code=302, headers={"Location": "/cabinet"})
 
 
