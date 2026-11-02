@@ -46,23 +46,51 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
         raise HTTPException(400)
     response.delete_cookie("vk_state", path="/")
     response.delete_cookie("vk_verifier", path="/")
-    async with httpx.AsyncClient(timeout=20) as cl:
-        r = await cl.post("https://id.vk.com/oauth2/token", data={"grant_type":"authorization_code","client_id":settings.VK_CLIENT_ID,"code":code,"code_verifier":cv,"redirect_uri":settings.VK_REDIRECT_URI})
-        td = r.json()
-    if not td.get("access_token"):
-        raise HTTPException(400, detail=td)
+    async with httpx.AsyncClient(timeout=30, follow_redirects=True) as cl:
+        r = await cl.post(
+            "https://id.vk.com/oauth2/token",
+            data={
+                "grant_type": "authorization_code",
+                "client_id": settings.VK_CLIENT_ID,
+                "code": code,
+                "code_verifier": cv,
+                "redirect_uri": settings.VK_REDIRECT_URI,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+        )
+        try:
+            td = r.json()
+        except Exception:
+            raise HTTPException(status_code=502, detail={"status": r.status_code, "body": r.text[:1000]})
+    if r.status_code != 200 or not isinstance(td, dict) or not td.get("access_token"):
+        raise HTTPException(status_code=502, detail={"status": r.status_code, "body": td})
+    access_token = td["access_token"]
     vk_id = td.get("user_id")
-    if vk_id: vk_id = str(vk_id)
-    info={}
+    if vk_id is not None:
+        vk_id = str(vk_id)
+    info = {}
     try:
-        async with httpx.AsyncClient(timeout=20) as cl:
-            rr = await cl.get(f"https://id.vk.com/oauth2/user_info?access_token={td['access_token']}&client_id={settings.VK_CLIENT_ID}")
-            info = rr.json()
-    except: pass
-    if not vk_id and isinstance(info,dict):
-        u=info.get("user") or info
-        if isinstance(u,dict) and u.get("id"): vk_id=str(u["id"])
-    if not vk_id: raise HTTPException(400)
+        async with httpx.AsyncClient(timeout=30, follow_redirects=True) as cl:
+            rr = await cl.post(
+                "https://id.vk.com/oauth2/user_info",
+                data={"client_id": settings.VK_CLIENT_ID, "access_token": access_token},
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+            )
+            try:
+                info = rr.json()
+            except Exception:
+                info = {"raw": rr.text[:500]}
+    except Exception:
+        info = {}
+    if not vk_id and isinstance(info, dict):
+        u = info.get("user") or info
+        if isinstance(u, dict):
+            if u.get("id") is not None:
+                vk_id = str(u["id"])
+            elif u.get("user_id") is not None:
+                vk_id = str(u["user_id"])
+    if not vk_id:
+        raise HTTPException(status_code=400, detail="no_user")
     ident = db.query(AuthIdentity).filter_by(provider="vk", provider_user_id=vk_id).first()
     user = ident.user if ident else db.query(User).filter_by(vk_id=vk_id).first()
     if not user:
