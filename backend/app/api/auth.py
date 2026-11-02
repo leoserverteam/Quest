@@ -32,8 +32,8 @@ def vk_login(request: Request, response: Response):
     state = secrets.token_urlsafe(32)
     code_verifier, code_challenge = _generate_pkce_pair()
 
-    response.set_cookie("vk_state", state, httponly=True, samesite="none", secure=settings.APP_ENV == "production", max_age=600, path="/")
-    response.set_cookie("vk_verifier", code_verifier, httponly=True, samesite="none", secure=settings.APP_ENV == "production", max_age=600, path="/")
+    response.set_cookie("vk_state", state, httponly=True, samesite="lax", secure=settings.APP_ENV == "production", max_age=600, path="/")
+    response.set_cookie("vk_verifier", code_verifier, httponly=True, samesite="lax", secure=settings.APP_ENV == "production", max_age=600, path="/")
 
     params = {
         "client_id": settings.VK_CLIENT_ID,
@@ -50,7 +50,7 @@ def vk_login(request: Request, response: Response):
 
 @router.get("/auth/vk/callback")
 @limiter.limit(settings.RATE_LIMIT_AUTH)
-async def vk_callback(request: Request, response: Response, code: str = None, state: str = None, device_id: str = None, db: Session = Depends(get_db)):
+async def vk_callback(request: Request, response: Response, code: str = None, state: str = None, db: Session = Depends(get_db)):
     if not code or not state:
         raise HTTPException(status_code=400, detail="Missing code/state")
     if request.cookies.get("vk_state") != state:
@@ -63,18 +63,16 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
     response.delete_cookie("vk_state", path="/")
     response.delete_cookie("vk_verifier", path="/")
 
-    form = {
+    form_data = {
         "grant_type": "authorization_code",
-        "client_id": settings.VK_CLIENT_ID,
         "code": code,
+        "client_id": settings.VK_CLIENT_ID,
         "code_verifier": code_verifier,
         "redirect_uri": settings.VK_REDIRECT_URI,
     }
-    if device_id:
-        form["device_id"] = device_id
 
     async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.post("https://id.vk.com/oauth2/token", data=form, headers={"Content-Type": "application/x-www-form-urlencoded"})
+        r = await client.post("https://id.vk.com/oauth2/token", data=form_data)
         try:
             token_data = r.json()
         except Exception:
@@ -84,7 +82,7 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
         raise HTTPException(status_code=502, detail=token_data)
 
     access_token = token_data["access_token"]
-    vk_id = token_data.get("user_id") or token_data.get("id")
+    vk_id = token_data.get("user_id")
     if vk_id:
         vk_id = str(vk_id)
 
@@ -94,7 +92,7 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
             rr = await client.post("https://id.vk.com/oauth2/user_info", data={"client_id": settings.VK_CLIENT_ID, "access_token": access_token})
             info = rr.json()
     except Exception:
-        info = {}
+        pass
 
     if not vk_id and isinstance(info, dict):
         u = info.get("user") or info
@@ -102,7 +100,7 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
             vk_id = str(u["id"])
 
     if not vk_id:
-        raise HTTPException(status_code=400, detail="Cannot get VK user")
+        raise HTTPException(status_code=400, detail="VK user not found")
 
     identity = db.query(AuthIdentity).filter(AuthIdentity.provider == "vk", AuthIdentity.provider_user_id == vk_id).first()
     user = identity.user if identity else db.query(User).filter(User.vk_id == vk_id).first()
@@ -116,7 +114,7 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
                 first = u.get("first_name") or ""
                 last = u.get("last_name") or ""
                 display_name = (f"{first} {last}").strip() or display_name
-                avatar_url = u.get("avatar") or u.get("photo_200")
+                avatar_url = u.get("avatar")
         user = User(vk_id=vk_id, display_name=display_name[:128], avatar_url=avatar_url)
         db.add(user)
         db.flush()
@@ -128,7 +126,7 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
     db.refresh(user)
 
     session_token = create_session(db, user.id, request)
-    response.set_cookie(settings.SESSION_COOKIE_NAME, session_token, httponly=True, samesite="none", secure=True, max_age=settings.SESSION_TTL_HOURS * 3600, path="/")
+    response.set_cookie(settings.SESSION_COOKIE_NAME, session_token, httponly=True, samesite="lax", secure=settings.APP_ENV == "production", max_age=settings.SESSION_TTL_HOURS * 3600, path="/")
     return Response(status_code=302, headers={"Location": "/cabinet"})
 
 
