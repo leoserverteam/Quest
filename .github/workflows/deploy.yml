@@ -19,7 +19,7 @@ jobs:
           APP_NAME=Quest
           APP_ENV=${{ vars.APP_ENV }}
           APP_HOST=${{ vars.APP_HOST }}
-          APP_PORT=${{ vars.APP_PORT || '8000' }}
+          APP_PORT=${{ vars.APP_PORT }}
           SECRET_KEY=${{ secrets.SECRET_KEY }}
 
           POSTGRES_DB=${{ vars.POSTGRES_DB }}
@@ -37,19 +37,16 @@ jobs:
           RATE_LIMIT_CREATE_PROFILE=${{ vars.RATE_LIMIT_CREATE_PROFILE }}
           RATE_LIMIT_UPLOAD=${{ vars.RATE_LIMIT_UPLOAD }}
           RATE_LIMIT_EDIT=${{ vars.RATE_LIMIT_EDIT }}
-          RATE_LIMIT_AUTH=${{ vars.RATE_LIMIT_AUTH || '20/hour' }}
+          RATE_LIMIT_AUTH=${{ vars.RATE_LIMIT_AUTH }}
 
-          QUESTIONS_CONFIG_PATH=${{ vars.QUESTIONS_CONFIG_PATH || '/app/config/questions.yaml' }}
+          QUESTIONS_CONFIG_PATH=${{ vars.QUESTIONS_CONFIG_PATH }}
 
           VK_CLIENT_ID=${{ secrets.VK_CLIENT_ID }}
           VK_CLIENT_SECRET=${{ secrets.VK_CLIENT_SECRET }}
-          VK_REDIRECT_URI=${{ vars.VK_REDIRECT_URI || 'https://quest.leonet.site/api/auth/vk/callback' }}
-          VK_AUTH_URL=${{ vars.VK_AUTH_URL || 'https://id.vk.com/authorize' }}
-          VK_TOKEN_URL=${{ vars.VK_TOKEN_URL || 'https://id.vk.com/oauth2/token' }}
-          VK_USERINFO_URL=${{ vars.VK_USERINFO_URL || 'https://id.vk.com/oauth2/user_info' }}
+          VK_REDIRECT_URI=${{ vars.VK_REDIRECT_URI }}
 
-          SESSION_COOKIE_NAME=${{ vars.SESSION_COOKIE_NAME || 'quest_session' }}
-          SESSION_TTL_HOURS=${{ vars.SESSION_TTL_HOURS || '168' }}
+          SESSION_COOKIE_NAME=${{ vars.SESSION_COOKIE_NAME }}
+          SESSION_TTL_HOURS=${{ vars.SESSION_TTL_HOURS }}
 
           VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }}
           VITE_PUBLIC_BASE_URL=${{ vars.VITE_PUBLIC_BASE_URL }}
