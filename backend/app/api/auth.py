@@ -47,22 +47,23 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
     response.delete_cookie("vk_state", path="/")
     response.delete_cookie("vk_verifier", path="/")
     async with httpx.AsyncClient(timeout=30, follow_redirects=True) as cl:
-        r = await cl.post(
-            "https://id.vk.com/oauth2/token",
-            data={
-                "grant_type": "authorization_code",
-                "client_id": settings.VK_CLIENT_ID,
-                "code": code,
-                "code_verifier": cv,
-                "redirect_uri": settings.VK_REDIRECT_URI,
-            },
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-        )
+        data = {
+            "grant_type": "authorization_code",
+            "client_id": settings.VK_CLIENT_ID,
+            "code": code,
+            "code_verifier": cv,
+            "redirect_uri": settings.VK_REDIRECT_URI,
+        }
+        r = await cl.post("https://id.vk.com/oauth2/token", data=data, headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"})
+        if r.status_code != 200 or "application/json" not in r.headers.get("content-type", "") or r.text.strip().startswith("<"):
+            r = await cl.post("https://id.vk.com/oauth2/token", data=data)
+        if r.status_code != 200 or r.text.strip().startswith("<"):
+            r = await cl.post("https://oauth.vk.com/access_token", data={**data, "client_secret": settings.VK_CLIENT_SECRET} if settings.VK_CLIENT_SECRET else data)
         try:
             td = r.json()
         except Exception:
-            raise HTTPException(status_code=502, detail={"status": r.status_code, "body": r.text[:1000]})
-    if r.status_code != 200 or not isinstance(td, dict) or not td.get("access_token"):
+            raise HTTPException(status_code=502, detail={"status": r.status_code, "ct": r.headers.get("content-type"), "body": r.text[:800]})
+    if not isinstance(td, dict) or not td.get("access_token"):
         raise HTTPException(status_code=502, detail={"status": r.status_code, "body": td})
     access_token = td["access_token"]
     vk_id = td.get("user_id")
