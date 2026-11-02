@@ -68,53 +68,62 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
         "grant_type": "authorization_code",
         "code": code,
         "client_id": settings.VK_CLIENT_ID,
-        "client_secret": settings.VK_CLIENT_SECRET,
         "redirect_uri": settings.VK_REDIRECT_URI,
         "code_verifier": code_verifier,
     }
+    if settings.VK_CLIENT_SECRET:
+        data["client_secret"] = settings.VK_CLIENT_SECRET
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    headers = {"Content-Type": "application/x-www-form-urlencoded"}
+    async with httpx.AsyncClient(timeout=20) as client:
         try:
-            resp = await client.post(settings.VK_TOKEN_URL, data=data)
+            resp = await client.post(settings.VK_TOKEN_URL, data=data, headers=headers)
             token_data = resp.json()
-        except Exception:
-            raise HTTPException(status_code=502, detail="VK token exchange failed")
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"VK token exchange failed: {e}")
 
     if resp.status_code >= 400 or "access_token" not in token_data:
-        raise HTTPException(status_code=400, detail=token_data.get("error_description") or "VK auth failed")
+        err = token_data.get("error_description") or token_data.get("error") or str(token_data)
+        raise HTTPException(status_code=400, detail=err)
 
     access_token = token_data["access_token"]
     user_id_vk = token_data.get("user_id") or token_data.get("id")
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with httpx.AsyncClient(timeout=20) as client:
             r = await client.get(settings.VK_USERINFO_URL, params={"access_token": access_token})
             info = r.json()
     except Exception:
         info = {}
 
     vk_id = str(user_id_vk) if user_id_vk else None
-    if not vk_id and isinstance(info, dict) and info.get("user"):
-        vk_id = str(info["user"].get("id"))
+    if not vk_id and isinstance(info, dict):
+        if info.get("user", {}).get("id"):
+            vk_id = str(info["user"]["id"])
+        elif info.get("id"):
+            vk_id = str(info["id"])
+
     if not vk_id:
         raise HTTPException(status_code=400, detail="Cannot get VK user")
 
     identity = db.query(AuthIdentity).filter(AuthIdentity.provider == "vk", AuthIdentity.provider_user_id == vk_id).first()
-    user = None
-    if identity:
-        user = identity.user
-    else:
-        user = db.query(User).filter(User.vk_id == vk_id).first()
+    user = identity.user if identity else db.query(User).filter(User.vk_id == vk_id).first()
 
     if not user:
         display_name = "User"
         avatar_url = None
-        if isinstance(info, dict) and info.get("user"):
+        if isinstance(info, dict) and isinstance(info.get("user"), dict):
             u = info["user"]
             first = u.get("first_name") or ""
             last = u.get("last_name") or ""
             display_name = (first + " " + last).strip() or display_name
-            avatar_url = u.get("avatar")
+            avatar_url = u.get("avatar") or u.get("photo_200")
+        elif isinstance(info, dict):
+            first = info.get("first_name") or ""
+            last = info.get("last_name") or ""
+            display_name = (first + " " + last).strip() or display_name
+            avatar_url = info.get("avatar") or info.get("photo_200")
+
         user = User(vk_id=vk_id, display_name=display_name[:128], avatar_url=avatar_url)
         db.add(user)
         db.flush()
@@ -134,27 +143,4 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
         secure=settings.APP_ENV == "production",
         max_age=settings.SESSION_TTL_HOURS * 3600,
     )
-    return {"ok": True, "redirect": "/cabinet"}
-
-
-@router.get("/auth/me")
-def auth_me(user: Optional[User] = Depends(get_current_user)):
-    if not user:
-        return {"user": None}
-    return {"user": {"id": str(user.id), "display_name": user.display_name, "avatar_url": user.avatar_url, "vk_id": user.vk_id}}
-
-
-@router.post("/auth/logout")
-def auth_logout(request: Request, response: Response, db: Session = Depends(get_db)):
-    token = request.cookies.get(settings.SESSION_COOKIE_NAME) or request.headers.get("X-Session-Token")
-    if token:
-        from app.core.session import hash_session_token
-        from app.models.user import UserSession
-
-        th = hash_session_token(token)
-        sess = db.query(UserSession).filter(UserSession.session_token_hash == th).first()
-        if sess and not sess.revoked_at:
-            sess.revoked_at = datetime.utcnow()
-            db.commit()
-    response.delete_cookie(settings.SESSION_COOKIE_NAME)
-    return {"ok": True}
+    return Response(status_code=302, headers={"Location": "/cabinet"})
