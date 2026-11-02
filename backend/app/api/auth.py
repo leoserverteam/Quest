@@ -42,7 +42,6 @@ def vk_login(request: Request, response: Response):
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
-        "scope": "email",
     }
     url = f"https://id.vk.com/authorize?{urlencode(params)}"
     return {"url": url}
@@ -75,9 +74,8 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
     if device_id:
         data["device_id"] = device_id
 
-    headers = {"Content-Type": "application/x-www-form-urlencoded"}
     async with httpx.AsyncClient(timeout=30) as client:
-        resp = await client.post("https://id.vk.com/oauth2/token", data=data, headers=headers)
+        resp = await client.post("https://id.vk.com/oauth2/token", data=data)
         try:
             token_data = resp.json()
         except Exception:
@@ -94,16 +92,15 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
     info = {}
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.post("https://id.vk.com/oauth2/user_info", data={"client_id": settings.VK_CLIENT_ID, "access_token": access_token}, headers={"Content-Type": "application/x-www-form-urlencoded"})
+            r = await client.post("https://id.vk.com/oauth2/user_info", data={"client_id": settings.VK_CLIENT_ID, "access_token": access_token})
             info = r.json()
     except Exception:
         info = {}
 
     if not vk_id and isinstance(info, dict):
-        if isinstance(info.get("user"), dict) and info["user"].get("id"):
-            vk_id = str(info["user"]["id"])
-        elif info.get("user_id"):
-            vk_id = str(info["user_id"])
+        u = info.get("user") or info
+        if isinstance(u, dict) and u.get("id"):
+            vk_id = str(u["id"])
 
     if not vk_id:
         raise HTTPException(status_code=400, detail="Cannot get VK user")
@@ -120,7 +117,7 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
                 first = u.get("first_name") or ""
                 last = u.get("last_name") or ""
                 display_name = (f"{first} {last}").strip() or display_name
-                avatar_url = u.get("avatar") or u.get("photo_100")
+                avatar_url = u.get("avatar")
         user = User(vk_id=vk_id, display_name=display_name[:128], avatar_url=avatar_url)
         db.add(user)
         db.flush()
