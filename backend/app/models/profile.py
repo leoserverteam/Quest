@@ -10,18 +10,23 @@ class Profile(Base):
     __tablename__ = "profiles"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     slug = Column(String(64), unique=True, index=True, nullable=False)
     display_name = Column(String(128), nullable=False)
     avatar_url = Column(Text, nullable=True)
     bio = Column(Text, nullable=True)
 
     edit_token_hash = Column(String(64), unique=True, index=True, nullable=False)
+    owner_bound_at = Column(DateTime, nullable=True)
+    last_edited_via = Column(String(16), nullable=True)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    user = relationship("User", back_populates="profiles")
     answers = relationship("Answer", back_populates="profile", cascade="all, delete-orphan")
     design = relationship("DesignSettings", back_populates="profile", uselist=False, cascade="all, delete-orphan")
+    profile_pools = relationship("ProfileQuestionPool", back_populates="profile", cascade="all, delete-orphan")
 
 
 class Answer(Base):
@@ -56,5 +61,36 @@ class DesignSettings(Base):
     card_color = Column(String(16), default="#1f2237")
     radius = Column(String(8), default="12px")
     bg_image_url = Column(Text, nullable=True)
+
+    # Расширенные настройки
+    bg_type = Column(String(16), default="color")  # color/gradient/image
+    bg_gradient = Column(Text, nullable=True)
+    bg_position = Column(String(32), default="center")
+    bg_size = Column(String(16), default="cover")
+    bg_overlay_opacity = Column(String(8), default="0")
+    bg_overlay_color = Column(String(16), default="#000000")
+
+    font_family = Column(String(64), default="Inter, system-ui, sans-serif")
+    font_size = Column(String(8), default="16px")
+    heading_size = Column(String(8), default="28px")
+    line_height = Column(String(8), default="1.6")
+
+    card_opacity = Column(String(8), default="1")
+    card_blur = Column(String(8), default="0px")
+    card_border_width = Column(String(8), default="0px")
+    card_border_color = Column(String(16), default="#ffffff")
+    card_shadow = Column(Text, nullable=True)
+
+    button_color = Column(String(16), nullable=True)
+    link_color = Column(String(16), nullable=True)
+    icon_color = Column(String(16), nullable=True)
+
+    avatar_style = Column(String(16), default="circle")
+    avatar_size = Column(String(8), default="80px")
+    profile_align = Column(String(16), default="left")
+    content_width = Column(String(12), default="760px")
+    gap = Column(String(8), default="16px")
+
+    extra = Column(JSON, nullable=True)
 
     profile = relationship("Profile", back_populates="design")

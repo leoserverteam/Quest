@@ -8,7 +8,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from app.db.base import Base
-from app.models import profile  # noqa
+from app.models import profile, user, pools  # noqa
 from app.core.config import settings
 
 config = context.config

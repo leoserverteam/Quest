@@ -1,5 +1,5 @@
 from pydantic_settings import BaseSettings
-from pydantic import Field, field_validator
+from pydantic import field_validator
 from typing import List
 
 
@@ -22,14 +22,25 @@ class Settings(BaseSettings):
     RATE_LIMIT_CREATE_PROFILE: str = "10/hour"
     RATE_LIMIT_UPLOAD: str = "20/hour"
     RATE_LIMIT_EDIT: str = "60/hour"
+    RATE_LIMIT_AUTH: str = "20/hour"
 
     QUESTIONS_CONFIG_PATH: str = "/app/config/questions.yaml"
+
+    # VK ID
+    VK_CLIENT_ID: str = ""
+    VK_CLIENT_SECRET: str = ""
+    VK_REDIRECT_URI: str = "https://quest.leonet.site/api/auth/vk/callback"
+    VK_AUTH_URL: str = "https://id.vk.com/authorize"
+    VK_TOKEN_URL: str = "https://id.vk.com/oauth2/token"
+    VK_USERINFO_URL: str = "https://id.vk.com/oauth2/user_info"
+
+    # Sessions
+    SESSION_COOKIE_NAME: str = "quest_session"
+    SESSION_TTL_HOURS: int = 24 * 7
 
     @field_validator("QUESTIONS_CONFIG_PATH")
     @classmethod
     def _default_questions_path(cls, value: str) -> str:
-        # Пустая переменная окружения (например, незаполненная GitHub Variable)
-        # не должна ломать запуск приложения.
         return value or "/app/config/questions.yaml"
 
     class Config:
