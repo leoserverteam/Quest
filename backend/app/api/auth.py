@@ -39,7 +39,7 @@ def vk_login(request: Request, response: Response):
         "client_id": settings.VK_CLIENT_ID,
         "redirect_uri": settings.VK_REDIRECT_URI,
         "response_type": "code",
-        "scope": "email phone",
+        "scope": "vkid.personal_info email",
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
@@ -67,57 +67,57 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
 
     data = {
         "grant_type": "authorization_code",
-        "code": code,
         "client_id": settings.VK_CLIENT_ID,
+        "code": code,
         "redirect_uri": settings.VK_REDIRECT_URI,
         "code_verifier": code_verifier,
     }
-    if settings.VK_CLIENT_SECRET:
-        data["client_secret"] = settings.VK_CLIENT_SECRET
 
     headers = {"Content-Type": "application/x-www-form-urlencoded"}
     async with httpx.AsyncClient(timeout=30) as client:
-        try:
-            resp = await client.post(settings.VK_TOKEN_URL, data=data, headers=headers)
-            text = resp.text
-            try:
-                token_data = resp.json()
-            except Exception:
-                token_data = json.loads(text)
-        except Exception as e:
-            raise HTTPException(status_code=502, detail=str(e))
+        resp = await client.post(settings.VK_TOKEN_URL, data=data, headers=headers)
+        raw = resp.text
 
-    if resp.status_code >= 400:
-        raise HTTPException(status_code=400, detail=token_data)
+    try:
+        token_data = json.loads(raw)
+    except Exception:
+        # try to parse form-like
+        token_data = {"raw": raw}
 
-    access_token = token_data.get("access_token")
-    if not access_token:
-        raise HTTPException(status_code=400, detail=token_data)
+    if resp.status_code >= 400 or not isinstance(token_data, dict) or token_data.get("access_token") is None:
+        raise HTTPException(status_code=502, detail={"vk_status": resp.status_code, "vk_response": token_data})
 
+    access_token = token_data["access_token"]
     vk_id = token_data.get("user_id") or token_data.get("id")
     if vk_id:
         vk_id = str(vk_id)
 
+    info = {}
     try:
         async with httpx.AsyncClient(timeout=30) as client:
-            r = await client.get(settings.VK_USERINFO_URL, params={"client_id": settings.VK_CLIENT_ID, "access_token": access_token})
-            try:
-                info = r.json()
-            except Exception:
-                info = {}
+            r = await client.get(f"{settings.VK_USERINFO_URL}?client_id={settings.VK_CLIENT_ID}", headers={"Authorization": f"Bearer {access_token}"})
+            info = r.json()
     except Exception:
-        info = {}
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                r = await client.get(f"{settings.VK_USERINFO_URL}?access_token={access_token}")
+                info = r.json()
+        except Exception:
+            info = {}
 
     if not vk_id and isinstance(info, dict):
-        if info.get("user", {}).get("id"):
+        if isinstance(info.get("user"), dict) and info["user"].get("id"):
             vk_id = str(info["user"]["id"])
-        elif info.get("response", {}).get("user_id"):
-            vk_id = str(info["response"]["user_id"])
+        elif isinstance(info.get("response"), dict):
+            if info["response"].get("user_id"):
+                vk_id = str(info["response"]["user_id"])
+            elif isinstance(info["response"].get("user"), dict) and info["response"]["user"].get("id"):
+                vk_id = str(info["response"]["user"]["id"])
         elif info.get("id"):
             vk_id = str(info["id"])
 
     if not vk_id:
-        raise HTTPException(status_code=400, detail="Cannot get VK user")
+        raise HTTPException(status_code=400, detail={"info": info, "token": {k: v for k,v in token_data.items() if k != 'access_token'}})
 
     identity = db.query(AuthIdentity).filter(AuthIdentity.provider == "vk", AuthIdentity.provider_user_id == vk_id).first()
     user = identity.user if identity else db.query(User).filter(User.vk_id == vk_id).first()
@@ -126,7 +126,7 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
         display_name = "User"
         avatar_url = None
         if isinstance(info, dict):
-            u = info.get("user") or info.get("response") or info
+            u = info.get("user") or (info.get("response").get("user") if isinstance(info.get("response"), dict) else None) or info.get("response") or info
             if isinstance(u, dict):
                 first = u.get("first_name") or u.get("given_name") or ""
                 last = u.get("last_name") or u.get("family_name") or ""
@@ -153,26 +153,3 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
         path="/",
     )
     return Response(status_code=302, headers={"Location": "/cabinet"})
-
-
-@router.get("/auth/me")
-def auth_me(user: Optional[User] = Depends(get_current_user)):
-    if not user:
-        return {"user": None}
-    return {"user": {"id": str(user.id), "display_name": user.display_name, "avatar_url": user.avatar_url, "vk_id": user.vk_id}}
-
-
-@router.post("/auth/logout")
-def auth_logout(request: Request, response: Response, db: Session = Depends(get_db)):
-    token = request.cookies.get(settings.SESSION_COOKIE_NAME) or request.headers.get("X-Session-Token")
-    if token:
-        from app.core.session import hash_session_token
-        from app.models.user import UserSession
-
-        th = hash_session_token(token)
-        sess = db.query(UserSession).filter(UserSession.session_token_hash == th).first()
-        if sess and not sess.revoked_at:
-            sess.revoked_at = datetime.utcnow()
-            db.commit()
-    response.delete_cookie(settings.SESSION_COOKIE_NAME, path="/")
-    return {"ok": True}
