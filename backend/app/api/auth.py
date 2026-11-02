@@ -21,8 +21,8 @@ router = APIRouter()
 
 def _generate_pkce_pair():
     code_verifier = secrets.token_urlsafe(32)
-    digest = hashlib.sha256(code_verifier.encode("utf-8")).digest()
-    code_challenge = base64.urlsafe_b64encode(digest).decode("utf-8").replace("=", "")
+    digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
     return code_verifier, code_challenge
 
 
@@ -39,13 +39,12 @@ def vk_login(request: Request, response: Response):
         "client_id": settings.VK_CLIENT_ID,
         "redirect_uri": settings.VK_REDIRECT_URI,
         "response_type": "code",
-        "scope": "vkid.personal_info",
+        "scope": "email",
         "state": state,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
     }
-    url = f"https://id.vk.com/authorize?{urlencode(params)}"
-    return {"url": url}
+    return {"url": f"https://id.vk.com/authorize?{urlencode(params)}"}
 
 
 @router.get("/auth/vk/callback")
@@ -63,23 +62,20 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
     response.delete_cookie("vk_state", path="/")
     response.delete_cookie("vk_verifier", path="/")
 
-    form_data = {
+    data = {
         "grant_type": "authorization_code",
-        "code": code,
         "client_id": settings.VK_CLIENT_ID,
+        "code": code,
         "code_verifier": code_verifier,
         "redirect_uri": settings.VK_REDIRECT_URI,
     }
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        r = await client.post("https://id.vk.com/oauth2/token", data=form_data)
-        try:
-            token_data = r.json()
-        except Exception:
-            raise HTTPException(status_code=502, detail=r.text)
+    async with httpx.AsyncClient() as client:
+        r = await client.post("https://id.vk.com/oauth2/token", data=data)
+        token_data = r.json()
 
     if r.status_code != 200 or not token_data.get("access_token"):
-        raise HTTPException(status_code=502, detail=token_data)
+        raise HTTPException(status_code=400, detail=token_data)
 
     access_token = token_data["access_token"]
     vk_id = token_data.get("user_id")
@@ -87,12 +83,12 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
         vk_id = str(vk_id)
 
     info = {}
-    try:
-        async with httpx.AsyncClient(timeout=30) as client:
-            rr = await client.post("https://id.vk.com/oauth2/user_info", data={"client_id": settings.VK_CLIENT_ID, "access_token": access_token})
+    async with httpx.AsyncClient() as client:
+        try:
+            rr = await client.get(f"https://id.vk.com/oauth2/user_info?client_id={settings.VK_CLIENT_ID}&access_token={access_token}")
             info = rr.json()
-    except Exception:
-        pass
+        except:
+            pass
 
     if not vk_id and isinstance(info, dict):
         u = info.get("user") or info
@@ -100,20 +96,17 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
             vk_id = str(u["id"])
 
     if not vk_id:
-        raise HTTPException(status_code=400, detail="VK user not found")
+        raise HTTPException(status_code=400, detail="No user id")
 
     identity = db.query(AuthIdentity).filter(AuthIdentity.provider == "vk", AuthIdentity.provider_user_id == vk_id).first()
     user = identity.user if identity else db.query(User).filter(User.vk_id == vk_id).first()
-
     if not user:
         display_name = "User"
         avatar_url = None
         if isinstance(info, dict):
             u = info.get("user") or info
             if isinstance(u, dict):
-                first = u.get("first_name") or ""
-                last = u.get("last_name") or ""
-                display_name = (f"{first} {last}").strip() or display_name
+                display_name = f"{u.get('first_name','')} {u.get('last_name','')}".strip() or "User"
                 avatar_url = u.get("avatar")
         user = User(vk_id=vk_id, display_name=display_name[:128], avatar_url=avatar_url)
         db.add(user)
@@ -143,7 +136,6 @@ def auth_logout(request: Request, response: Response, db: Session = Depends(get_
     if token:
         from app.core.session import hash_session_token
         from app.models.user import UserSession
-
         th = hash_session_token(token)
         sess = db.query(UserSession).filter(UserSession.session_token_hash == th).first()
         if sess and not sess.revoked_at:
