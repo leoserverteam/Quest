@@ -3,6 +3,10 @@ name: Deploy Quest
 on:
   push:
     branches: [main]
+
+concurrency:
+  group: deploy-quest
+  cancel-in-progress: true
   workflow_dispatch:
 
 jobs:
