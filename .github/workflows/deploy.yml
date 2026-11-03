@@ -46,7 +46,7 @@ jobs:
           QUESTIONS_CONFIG_PATH=${{ vars.QUESTIONS_CONFIG_PATH }}
 
           VK_CLIENT_ID=${{ secrets.VK_CLIENT_ID }}
-          VK_CLIENT_SECRET=${{ secrets.VK_CLIENT_SECRET }}
+          VK_SERVICE_TOKEN=${{ secrets.VK_SERVICE_TOKEN }}
           VK_REDIRECT_URI=${{ vars.VK_REDIRECT_URI }}
 
           SESSION_COOKIE_NAME=${{ vars.SESSION_COOKIE_NAME }}

@@ -1,6 +1,6 @@
 import base64
 import hashlib
-import json
+import logging
 import secrets
 from datetime import datetime
 from typing import Optional
@@ -8,6 +8,7 @@ from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -15,6 +16,8 @@ from app.core.rate_limit import limiter
 from app.core.session import create_session, get_current_user
 from app.db.session import get_db
 from app.models.user import User, AuthIdentity
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -41,19 +44,19 @@ def vk_login(request: Request, response: Response):
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
     }
-    return {"url": "https://id.vk.com/authorize?" + urlencode(params)}
+    return {"url": settings.VK_AUTH_URL + "?" + urlencode(params)}
 
 
 @router.get("/auth/vk/callback")
 @limiter.limit(settings.RATE_LIMIT_AUTH)
-async def vk_callback(request: Request, response: Response, code: str = None, state: str = None, device_id: str = None, db: Session = Depends(get_db)):
+async def vk_callback(request: Request, code: str = None, state: str = None, device_id: str = None, db: Session = Depends(get_db)):
     if not code or not state or request.cookies.get("vk_state") != state:
         raise HTTPException(status_code=400, detail="invalid_state")
     code_verifier = request.cookies.get("vk_verifier")
     if not code_verifier:
         raise HTTPException(status_code=400, detail="missing_verifier")
-    response.delete_cookie("vk_state", path="/")
-    response.delete_cookie("vk_verifier", path="/")
+    if not device_id:
+        raise HTTPException(status_code=400, detail="missing_device_id")
 
     payload = {
         "grant_type": "authorization_code",
@@ -61,33 +64,45 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
         "client_id": settings.VK_CLIENT_ID,
         "code_verifier": code_verifier,
         "redirect_uri": settings.VK_REDIRECT_URI,
+        "state": state,
+        "device_id": device_id,
     }
-    if device_id:
-        payload["device_id"] = device_id
+    # Для конфиденциальных приложений VK ID требует именно service_token
+    # ("Сервисный ключ доступа"), а не client_secret ("Защищённый ключ").
+    if settings.VK_SERVICE_TOKEN:
+        payload["service_token"] = settings.VK_SERVICE_TOKEN
 
     token_data = None
     async with httpx.AsyncClient(timeout=30) as client:
         try:
             resp = await client.post(
-                "https://id.vk.com/oauth2/token",
+                settings.VK_TOKEN_URL,
                 data=payload,
+                headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
             )
-            ctype = resp.headers.get("content-type", "")
-            if "application/json" in ctype and not resp.text.strip().startswith("<"):
-                try:
-                    token_data = resp.json()
-                except Exception:
-                    pass
-            elif resp.status_code == 200 and resp.text.strip().startswith("{"):
-                try:
-                    token_data = resp.json()
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        except httpx.HTTPError:
+            logger.exception("VK ID token request failed")
+            raise HTTPException(status_code=502, detail={"error": "token_failed"})
 
-    if not isinstance(token_data, dict) or not token_data.get("access_token"):
-        raise HTTPException(status_code=502, detail={"error": "token_failed"})
+        if resp.status_code == 200:
+            try:
+                token_data = resp.json()
+            except ValueError:
+                token_data = None
+
+        if resp.status_code != 200 or not isinstance(token_data, dict) or token_data.get("error") or not token_data.get("access_token"):
+            # Не логируем access_token: тело пишем только при ошибке.
+            logger.error(
+                "VK ID token exchange failed: status=%s url=%s body=%s",
+                resp.status_code,
+                settings.VK_TOKEN_URL,
+                resp.text[:1000],
+            )
+            raise HTTPException(status_code=502, detail={"error": "token_failed"})
+
+    if token_data.get("state") and token_data["state"] != state:
+        logger.error("VK ID token response state mismatch")
+        raise HTTPException(status_code=400, detail="invalid_state")
 
     access_token = token_data["access_token"]
     vk_id = token_data.get("user_id")
@@ -98,16 +113,16 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.post(
-                "https://id.vk.com/oauth2/user_info",
+                settings.VK_USERINFO_URL,
                 data={"client_id": settings.VK_CLIENT_ID, "access_token": access_token},
                 headers={"Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"},
             )
             try:
                 info = resp.json()
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except ValueError:
+                logger.error("VK ID user_info returned non-JSON: status=%s", resp.status_code)
+    except httpx.HTTPError:
+        logger.exception("VK ID user_info request failed")
 
     if not vk_id and isinstance(info, dict):
         user_info = info.get("user") or info
@@ -146,7 +161,10 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
     db.refresh(user)
 
     session_token = create_session(db, user.id, request)
-    response.set_cookie(
+    redirect = RedirectResponse(url="/cabinet", status_code=302)
+    redirect.delete_cookie("vk_state", path="/")
+    redirect.delete_cookie("vk_verifier", path="/")
+    redirect.set_cookie(
         settings.SESSION_COOKIE_NAME,
         session_token,
         httponly=True,
@@ -155,7 +173,7 @@ async def vk_callback(request: Request, response: Response, code: str = None, st
         max_age=settings.SESSION_TTL_HOURS * 3600,
         path="/",
     )
-    return Response(status_code=302, headers={"Location": "/cabinet"})
+    return redirect
 
 
 @router.get("/auth/me")

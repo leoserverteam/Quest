@@ -62,6 +62,9 @@ docker compose up --build -d
 - `ALLOWED_IMAGE_MIMES` — разрешённые MIME
 - `CORS_ORIGINS` — разрешённые источники
 - `RATE_LIMIT_*` — настройки rate limiting
+- `VK_CLIENT_ID` — ID приложения VK ID
+- `VK_SERVICE_TOKEN` — «Сервисный ключ доступа» из настроек VK ID (обязателен для конфиденциальных приложений)
+- `VK_REDIRECT_URI` — адрес callback, должен совпадать с указанным в настройках приложения VK ID
 
 ## Конфигурация вопросов
 

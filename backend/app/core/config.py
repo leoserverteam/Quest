@@ -28,10 +28,14 @@ class Settings(BaseSettings):
 
     # VK ID
     VK_CLIENT_ID: str = ""
+    # "Сервисный ключ доступа" (service_token) — им подписывается серверный обмен кода на токен.
+    # Обязателен для конфиденциальных приложений.
+    VK_SERVICE_TOKEN: str = ""
+    # "Защищённый ключ" (client_secret). В серверном обмене кода VK ID не участвует.
     VK_CLIENT_SECRET: str = ""
     VK_REDIRECT_URI: str = "https://quest.leonet.site/api/auth/vk/callback"
     VK_AUTH_URL: str = "https://id.vk.com/authorize"
-    VK_TOKEN_URL: str = "https://id.vk.com/oauth2/token"
+    VK_TOKEN_URL: str = "https://id.vk.com/oauth2/auth"
     VK_USERINFO_URL: str = "https://id.vk.com/oauth2/user_info"
 
     # Sessions
