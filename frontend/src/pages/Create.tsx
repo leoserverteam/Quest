@@ -42,7 +42,7 @@ export default function Create() {
           <label className="block mb-1">Краткое описание</label>
           <textarea className="textarea w-full px-3 py-2" value={bio} onChange={e => setBio(e.target.value)} />
         </div>
-        {error && <div className="text-red-400">{error}</div>}
+        {error && <div className="text-danger">{error}</div>}
         <button disabled={loading} className="btn px-4 py-2 w-full">{loading ? 'Создаём...' : 'Создать'}</button>
       </form>
     </div>

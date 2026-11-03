@@ -1,6 +1,26 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import api from '../lib/api'
+import { applyTheme } from '../lib/theme'
+
+function optionLabel(question: any, value: any): string {
+  const options: any[] = question.options || []
+  const found = options.find(o => String(o.value) === String(value))
+  return found ? (found.label ?? String(found.value)) : String(value ?? '')
+}
+
+function formatAnswer(question: any, value: any): string {
+  if (value === null || value === undefined || value === '') return ''
+  if (typeof value === 'boolean') return value ? 'Да' : 'Нет'
+  if (question.type === 'boolean') return value ? 'Да' : 'Нет'
+  if (question.type === 'select') return optionLabel(question, value)
+  if (question.type === 'multiselect') {
+    const values = Array.isArray(value) ? value : [value]
+    return values.map(v => optionLabel(question, v)).join(', ')
+  }
+  if (Array.isArray(value)) return value.join(', ')
+  return String(value)
+}
 
 export default function Public() {
   const { slug } = useParams()
@@ -10,21 +30,10 @@ export default function Public() {
   useEffect(() => {
     api.get(`/profiles/${slug}/public`).then(r => {
       setData(r.data)
-      // apply design
-      const d = r.data.design
-      const root = document.documentElement
-      if (d.bg_color) root.style.setProperty('--q-bg', d.bg_color)
-      if (d.text_color) root.style.setProperty('--q-text', d.text_color)
-      if (d.heading_color) root.style.setProperty('--q-heading', d.heading_color)
-      if (d.accent_color) root.style.setProperty('--q-accent', d.accent_color)
-      if (d.card_color) root.style.setProperty('--q-card', d.card_color)
-      if (d.radius) root.style.setProperty('--q-radius', d.radius)
-      if (d.bg_image_url) {
-        document.body.style.backgroundImage = `url(${d.bg_image_url})`
-        document.body.style.backgroundSize = 'cover'
-        document.body.style.backgroundAttachment = 'fixed'
-      }
-      // OG
+      // Apply the full theme (dark, light, gradient, translucent, custom).
+      applyTheme(r.data.design || {})
+
+      // OG meta tags
       const p = r.data.profile
       const metaTitle = document.createElement('meta')
       metaTitle.setAttribute('property', 'og:title')
@@ -47,7 +56,7 @@ export default function Public() {
     <div className="min-h-screen">
       <main className="max-w-3xl mx-auto px-4 py-10">
         <div className="card p-6 mb-6 flex items-center gap-4">
-          {p.avatar_url ? <img src={p.avatar_url} className="w-20 h-20 rounded-full object-cover" /> : <div className="w-20 h-20 rounded-full bg-white/10" />}
+          {p.avatar_url ? <img src={p.avatar_url} className="w-20 h-20 rounded-full object-cover" /> : <div className="w-20 h-20 rounded-full avatar-placeholder" />}
           <div>
             <h1 className="text-2xl font-bold">{p.display_name}</h1>
             {p.bio && <p className="opacity-80">{p.bio}</p>}
@@ -63,7 +72,7 @@ export default function Public() {
                   <div className="font-medium mb-1">{q.title}</div>
                   {q.description && <div className="text-sm opacity-60 mb-2">{q.description}</div>}
                   <div className="whitespace-pre-wrap break-words">
-                    {Array.isArray(answers[q.id]) ? answers[q.id].join(', ') : String(answers[q.id] ?? '')}
+                    {formatAnswer(q, answers[q.id])}
                   </div>
                 </div>
               ))}

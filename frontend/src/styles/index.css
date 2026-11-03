@@ -3,30 +3,68 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: dark;
+
   --q-bg: #0f1026;
+  --q-bg-image: none;
+  --q-bg-position: center;
+  --q-bg-size: cover;
   --q-text: #f4f4f9;
   --q-heading: #ffffff;
   --q-accent: #7c3aed;
   --q-card: #1f2237;
+  --q-card-opaque: #1f2237;
   --q-radius: 12px;
   --q-font: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+  --q-font-size: 16px;
+  --q-line-height: 1.6;
   --q-content-width: 760px;
   --q-gap: 16px;
   --q-card-blur: 0px;
-  --q-card-border: 0px solid rgba(255,255,255,0.3);
+  --q-card-border: 0px solid rgba(255, 255, 255, 0.3);
   --q-card-shadow: none;
+
+  /* Theme-aware controls. These tokens are recomputed in lib/theme.ts. */
+  --q-input-bg: #262a42;
+  --q-input-text: #f4f4f9;
+  --q-option-bg: #1f2237;
+  --q-option-text: #f4f4f9;
+  --q-option-hover-bg: #322a55;
+  --q-option-selected-bg: #4c2f9e;
+  --q-option-selected-text: #ffffff;
+  --q-placeholder: rgba(244, 244, 249, 0.6);
+  --q-border: rgba(244, 244, 249, 0.18);
+  --q-menu-bg: #1f2237;
+  --q-menu-text: #f4f4f9;
+  --q-btn-text: #ffffff;
+  --q-link: var(--q-accent);
+  --q-success: #4ade80;
+  --q-danger: #f87171;
+  --q-warning: #fbbf24;
+}
+
+html {
+  background: var(--q-bg);
 }
 
 body {
-  background: var(--q-bg);
+  background-color: var(--q-bg);
+  background-image: var(--q-bg-image, none);
+  background-position: var(--q-bg-position, center);
+  background-size: var(--q-bg-size, cover);
+  background-attachment: fixed;
+  background-repeat: no-repeat;
   color: var(--q-text);
   font-family: var(--q-font);
+  font-size: var(--q-font-size, 16px);
+  line-height: var(--q-line-height, 1.6);
   min-height: 100vh;
   transition: background 0.3s ease, color 0.3s ease;
 }
 
 .card {
   background: var(--q-card);
+  color: var(--q-text);
   border-radius: var(--q-radius);
   backdrop-filter: blur(var(--q-card-blur));
   -webkit-backdrop-filter: blur(var(--q-card-blur));
@@ -37,9 +75,11 @@ body {
 .card:hover {
   transform: translateY(-1px);
 }
+
 .btn {
   background: var(--q-accent);
-  color: white;
+  color: var(--q-btn-text, #ffffff);
+  border: 1px solid transparent;
   border-radius: var(--q-radius);
   transition: opacity 0.2s ease, transform 0.15s ease;
 }
@@ -47,17 +87,174 @@ body {
   opacity: 0.9;
   transform: translateY(-1px);
 }
-.input, .textarea, .select {
-  background: transparent;
-  border: 1px solid rgba(255,255,255,0.15);
-  border-radius: var(--q-radius);
-  color: var(--q-text);
+.btn:disabled,
+.btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
 }
-h1,h2,h3,h4,h5,h6 {
+.btn-secondary {
+  background: var(--q-card-opaque);
+  color: var(--q-text);
+  border: 1px solid var(--q-border);
+}
+.btn-danger {
+  background: #dc2626;
+  color: #ffffff;
+}
+
+.input,
+.textarea,
+.select {
+  background-color: var(--q-input-bg, var(--q-card-opaque));
+  border: 1px solid var(--q-border, rgba(255, 255, 255, 0.15));
+  border-radius: var(--q-radius);
+  color: var(--q-input-text, var(--q-text));
+  color-scheme: inherit;
+}
+.input::placeholder,
+.textarea::placeholder {
+  color: var(--q-placeholder, rgba(244, 244, 249, 0.6));
+  opacity: 1;
+}
+.input:focus,
+.textarea:focus,
+.select:focus {
+  outline: none;
+  border-color: var(--q-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--q-accent) 25%, transparent);
+}
+.input:disabled,
+.textarea:disabled,
+.select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Native select dropdowns must not inherit the page color blindly. Chromium,
+   Firefox and WebKit render <option> using these values, and color-scheme keeps
+   the browser's own controls readable on both dark and light themes. */
+.select {
+  color-scheme: inherit;
+}
+.select option,
+.select optgroup {
+  background-color: var(--q-option-bg, var(--q-card-opaque));
+  color: var(--q-option-text, var(--q-text));
+}
+.select option:hover,
+.select option:focus {
+  background-color: var(--q-option-hover-bg, var(--q-accent));
+  color: var(--q-option-text, var(--q-text));
+}
+.select option:checked {
+  background-color: var(--q-option-selected-bg, var(--q-accent));
+  color: var(--q-option-selected-text, #ffffff);
+}
+.select optgroup {
+  font-weight: 600;
+}
+.select option:disabled {
+  color: var(--q-placeholder);
+}
+
+/* Menus, dropdowns, popovers and modal surfaces share the same tokens. */
+.dropdown,
+.menu,
+.popover,
+.modal,
+.modal-content {
+  background-color: var(--q-menu-bg, var(--q-card-opaque));
+  color: var(--q-menu-text, var(--q-text));
+  border: 1px solid var(--q-border);
+}
+.dropdown-item,
+.menu-item {
+  color: var(--q-menu-text, var(--q-text));
+}
+.dropdown-item:hover,
+.menu-item:hover,
+.dropdown-item:focus,
+.menu-item:focus {
+  background-color: var(--q-option-hover-bg);
+  color: var(--q-option-text);
+  outline: none;
+}
+.dropdown-item.selected,
+.menu-item.selected,
+.dropdown-item[aria-selected='true'],
+.menu-item[aria-selected='true'] {
+  background-color: var(--q-option-selected-bg);
+  color: var(--q-option-selected-text);
+}
+.modal-backdrop {
+  background: rgba(0, 0, 0, 0.55);
+}
+
+/* Checkboxes and radios in dark/light themes should be clearly visible. */
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'],
+progress {
+  accent-color: var(--q-accent);
+  color-scheme: inherit;
+}
+
+input[type='color'] {
+  background: var(--q-input-bg);
+  border: 1px solid var(--q-border);
+  border-radius: var(--q-radius);
+}
+
+input[type='file']::file-selector-button {
+  background: var(--q-accent);
+  color: var(--q-btn-text, #ffffff);
+  border: 0;
+  border-radius: var(--q-radius);
+  padding: 0.25rem 0.75rem;
+  margin-right: 0.5rem;
+  cursor: pointer;
+}
+
+/* Avoid unreadable browser autofill styling. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px var(--q-input-bg) inset;
+  -webkit-text-fill-color: var(--q-input-text);
+  caret-color: var(--q-input-text);
+}
+
+h1, h2, h3, h4, h5, h6 {
   color: var(--q-heading);
 }
 a {
-  color: var(--q-accent);
+  color: var(--q-link, var(--q-accent));
+}
+
+.text-success {
+  color: var(--q-success);
+}
+.text-danger {
+  color: var(--q-danger);
+}
+.text-warning {
+  color: var(--q-warning);
+}
+.border-theme {
+  border: 1px solid var(--q-border);
+}
+.border-t-theme {
+  border-top: 1px solid var(--q-border);
+}
+.avatar-placeholder {
+  background: var(--q-border);
+}
+
+hr {
+  border-color: var(--q-border);
 }
 
 @keyframes fadeInUp {

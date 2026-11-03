@@ -36,6 +36,32 @@ class DesignUpdate(BaseModel):
     radius: Optional[str] = None
     bg_image_url: Optional[str] = None
 
+    # Extended design settings (kept in sync with the DesignSettings model).
+    bg_type: Optional[str] = None
+    bg_gradient: Optional[str] = None
+    bg_position: Optional[str] = None
+    bg_size: Optional[str] = None
+    bg_overlay_opacity: Optional[str] = None
+    bg_overlay_color: Optional[str] = None
+    font_family: Optional[str] = None
+    font_size: Optional[str] = None
+    heading_size: Optional[str] = None
+    line_height: Optional[str] = None
+    card_opacity: Optional[str] = None
+    card_blur: Optional[str] = None
+    card_border_width: Optional[str] = None
+    card_border_color: Optional[str] = None
+    card_shadow: Optional[str] = None
+    button_color: Optional[str] = None
+    link_color: Optional[str] = None
+    icon_color: Optional[str] = None
+    avatar_style: Optional[str] = None
+    avatar_size: Optional[str] = None
+    profile_align: Optional[str] = None
+    content_width: Optional[str] = None
+    gap: Optional[str] = None
+    extra: Optional[Dict[str, Any]] = None
+
 
 class ProfileOut(BaseModel):
     id: UUID
@@ -51,14 +77,39 @@ class ProfileOut(BaseModel):
 
 
 class DesignOut(BaseModel):
-    preset: str
-    bg_color: str
-    text_color: str
-    heading_color: str
-    accent_color: str
-    card_color: str
-    radius: str
-    bg_image_url: Optional[str]
+    preset: Optional[str] = "dark"
+    bg_color: Optional[str] = "#0f1026"
+    text_color: Optional[str] = "#f4f4f9"
+    heading_color: Optional[str] = "#ffffff"
+    accent_color: Optional[str] = "#7c3aed"
+    card_color: Optional[str] = "#1f2237"
+    radius: Optional[str] = "12px"
+    bg_image_url: Optional[str] = None
+
+    bg_type: Optional[str] = "color"
+    bg_gradient: Optional[str] = None
+    bg_position: Optional[str] = "center"
+    bg_size: Optional[str] = "cover"
+    bg_overlay_opacity: Optional[str] = "0"
+    bg_overlay_color: Optional[str] = "#000000"
+    font_family: Optional[str] = "Inter, system-ui, sans-serif"
+    font_size: Optional[str] = "16px"
+    heading_size: Optional[str] = "28px"
+    line_height: Optional[str] = "1.6"
+    card_opacity: Optional[str] = "1"
+    card_blur: Optional[str] = "0px"
+    card_border_width: Optional[str] = "0px"
+    card_border_color: Optional[str] = "#ffffff"
+    card_shadow: Optional[str] = None
+    button_color: Optional[str] = None
+    link_color: Optional[str] = None
+    icon_color: Optional[str] = None
+    avatar_style: Optional[str] = "circle"
+    avatar_size: Optional[str] = "80px"
+    profile_align: Optional[str] = "left"
+    content_width: Optional[str] = "760px"
+    gap: Optional[str] = "16px"
+    extra: Optional[Dict[str, Any]] = None
 
     class Config:
         from_attributes = True

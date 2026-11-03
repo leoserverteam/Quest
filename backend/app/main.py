@@ -48,7 +48,8 @@ except Exception as e:
 
 # start questions watcher
 try:
-    start_watcher()
+    if settings.QUESTIONS_WATCH_ENABLED:
+        start_watcher()
 except Exception as e:
     print(f"Failed to start questions watcher: {e}")
 

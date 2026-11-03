@@ -4,6 +4,10 @@ from app.db.session import engine
 
 
 def apply_fallback_migrations():
+    # These statements use PostgreSQL-specific DDL.  Other databases (used by
+    # the test suite) are created from SQLAlchemy metadata instead.
+    if engine.dialect.name != "postgresql":
+        return
     with engine.begin() as conn:
         # profiles extensions
         conn.execute(text("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS user_id UUID"))
@@ -42,3 +46,21 @@ def apply_fallback_migrations():
                 conn.execute(text(f"ALTER TABLE design_settings ADD COLUMN IF NOT EXISTS {col} {typ}"))
             except Exception:
                 pass
+
+        # `open_to_chat` used to be a boolean question.  Adapt old answers to
+        # the new single-choice values without losing their meaning.
+        try:
+            conn.execute(
+                text(
+                    "UPDATE answers SET value = '\"always\"'::json "
+                    "WHERE question_id = 'open_to_chat' AND CAST(value AS text) = 'true'"
+                )
+            )
+            conn.execute(
+                text(
+                    "UPDATE answers SET value = '\"not_looking\"'::json "
+                    "WHERE question_id = 'open_to_chat' AND CAST(value AS text) = 'false'"
+                )
+            )
+        except Exception:
+            pass

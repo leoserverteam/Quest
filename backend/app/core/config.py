@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_AUTH: str = "20/hour"
 
     QUESTIONS_CONFIG_PATH: str = "/app/config/questions.yaml"
+    QUESTIONS_WATCH_ENABLED: bool = True
 
     # VK ID
     VK_CLIENT_ID: str = ""

@@ -93,8 +93,22 @@ categories:
             label: Странное
       - id: open_to_chat
         title: Открыт(а) к диалогу?
-        type: boolean
+        type: select
         required: false
+        description: Выбери вариант, который лучше всего тебя описывает
+        options:
+          - value: always
+            label: Да, всегда открыт(а) к общению
+          - value: shared_interests
+            label: Да, если есть общие интересы
+          - value: mood
+            label: Зависит от настроения
+          - value: interesting_people
+            label: Только с интересными людьми
+          - value: observe_first
+            label: Предпочитаю сначала наблюдать
+          - value: not_looking
+            label: Нет, сейчас не ищу общения
       - id: facts
         title: Интересный факт о себе
         type: textarea

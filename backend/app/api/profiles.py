@@ -22,6 +22,11 @@ from app.core.security import generate_edit_token, hash_edit_token
 from app.core.utils import sanitize_slug, safe_filename, ensure_dir
 from app.core.config import settings
 from app.services.questions import questions_service
+from app.services.profile_questions import (
+    build_profile_categories,
+    build_question_index,
+    normalize_answer_value,
+)
 from app.core.rate_limit import limiter
 from app.api.deps import get_profile_by_edit_token
 
@@ -29,6 +34,16 @@ import magic
 from PIL import Image
 
 router = APIRouter()
+
+
+def _is_answered(value) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, str) and not value.strip():
+        return False
+    if isinstance(value, list) and not value:
+        return False
+    return True
 
 
 def _get_public_base(request: Request) -> str:
@@ -88,14 +103,14 @@ def get_public_profile(slug: str, db: Session = Depends(get_db)):
             continue
         answers_dict[a.question_id] = a.value
 
-    categories = questions_service.get_categories()
+    categories = build_profile_categories(profile)
     # filter out questions user didn't answer? keep structure but only show answered in public view? per spec: "Не отображать вопросы, на которые пользователь не ответил, если это не требуется настройкой." - we'll filter answered
     # build filtered categories
     filtered = []
     for cat in categories:
-        fcat = {"id": cat["id"], "title": cat["title"], "questions": []}
+        fcat = {**cat, "questions": []}
         for q in cat.get("questions", []):
-            if q["id"] in answers_dict:
+            if q["id"] in answers_dict and _is_answered(answers_dict[q["id"]]):
                 fcat["questions"].append(q)
         if fcat["questions"]:
             filtered.append(fcat)
@@ -108,7 +123,7 @@ def get_edit_profile(profile: Profile = Depends(get_profile_by_edit_token), db: 
     design = profile.design or DesignSettings()
     answers_qs = db.query(Answer).filter(Answer.profile_id == profile.id).all()
     answers_dict = {a.question_id: {"value": a.value, "hidden": a.hidden} for a in answers_qs}
-    categories = questions_service.get_categories()
+    categories = build_profile_categories(profile)
     return EditProfileResponse(profile=profile, design=design, categories=categories, answers=answers_dict)
 
 
@@ -132,19 +147,44 @@ def update_profile(profile_in: ProfileUpdate, profile: Profile = Depends(get_pro
 
 @router.put("/edit/me/answers")
 def update_answers(answers_in: AnswersUpdate, profile: Profile = Depends(get_profile_by_edit_token), db: Session = Depends(get_db)):
-    qids = questions_service.get_question_ids()
+    categories = build_profile_categories(profile)
+    question_index = build_question_index(categories)
+    existing = {
+        a.question_id: a
+        for a in db.query(Answer).filter(Answer.profile_id == profile.id).all()
+    }
+
     for item in answers_in.answers:
-        if item.question_id not in qids:
-            # still allow saving? spec says don't lose answers if question removed - but better to allow storing unknown? but better validate against current config; to not lose, we should allow if exists? easier to just upsert by id
-            pass
-        ans = db.query(Answer).filter(Answer.profile_id == profile.id, Answer.question_id == item.question_id).first()
+        question = question_index.get(item.question_id)
+        ans = existing.get(item.question_id)
+        if question is None:
+            # Answers to removed questions are not deleted, but we do not allow
+            # writing arbitrary new question ids into the database.
+            if ans is None:
+                raise HTTPException(status_code=400, detail=f"Unknown question: {item.question_id}")
+            value = item.value
+        else:
+            try:
+                value = normalize_answer_value(question, item.value)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid answer for {item.question_id}: {exc}",
+                )
+
         if ans:
-            ans.value = item.value
+            ans.value = value
             if item.hidden is not None:
                 ans.hidden = item.hidden
         else:
-            ans = Answer(profile_id=profile.id, question_id=item.question_id, value=item.value, hidden=bool(item.hidden))
+            ans = Answer(
+                profile_id=profile.id,
+                question_id=item.question_id,
+                value=value,
+                hidden=bool(item.hidden),
+            )
             db.add(ans)
+            existing[item.question_id] = ans
     db.commit()
     return {"ok": True}
 
@@ -243,11 +283,16 @@ def export_json(slug: str, db: Session = Depends(get_db)):
     design = profile.design
     answers_qs = db.query(Answer).filter(Answer.profile_id == profile.id).all()
     answers = [{"question_id": a.question_id, "value": a.value, "hidden": a.hidden} for a in answers_qs]
+    design_data = (
+        {column.name: getattr(design, column.name) for column in design.__table__.columns}
+        if design
+        else None
+    )
     return {
         "profile": {"slug": profile.slug, "display_name": profile.display_name, "bio": profile.bio, "avatar_url": profile.avatar_url},
-        "design": design.__dict__ if design else None,
+        "design": design_data,
         "answers": answers,
-        "categories": questions_service.get_categories(),
+        "categories": build_profile_categories(profile),
     }
 
 
