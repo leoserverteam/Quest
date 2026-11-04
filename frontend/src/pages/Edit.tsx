@@ -256,7 +256,10 @@ export default function Edit() {
             <div className="card p-6 space-y-4">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <h2 className="text-xl font-semibold">Мои пулы вопросов</h2>
-                <Link to="/pools" className="btn px-3 py-2" target="_blank">Управлять пулами</Link>
+                <div className="flex gap-2">
+                  <Link to="/library" className="btn btn-secondary px-3 py-2" target="_blank">Библиотека</Link>
+                  <Link to="/pools" className="btn px-3 py-2" target="_blank">Управлять пулами</Link>
+                </div>
               </div>
 
               {!poolData?.authenticated && (
@@ -290,6 +293,7 @@ export default function Edit() {
                       <span>
                         <span className="font-medium">{pool.name}</span>
                         <span className="opacity-60 text-sm"> ({pool.count} вопросов)</span>
+                        {pool.origin && <span className="text-xs opacity-60"> · из библиотеки</span>}
                       </span>
                     </span>
                     {pool.attached && <span className="text-xs opacity-70">подключён</span>}

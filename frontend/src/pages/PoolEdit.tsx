@@ -1,6 +1,18 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import api from '../lib/api'
+import api, { publicBase } from '../lib/api'
+
+const VISIBILITY_LABELS: Record<string, string> = {
+  private: 'Приватный',
+  unlisted: 'Доступен по ссылке',
+  public: 'Публичный',
+}
+
+const VISIBILITY_HINTS: Record<string, string> = {
+  private: 'Виден только вам. В библиотеке не отображается.',
+  unlisted: 'Не показывается в каталоге, но доступен по специальной ссылке.',
+  public: 'Показывается в библиотеке вопросов. Другие пользователи могут добавить пул себе.',
+}
 
 const TYPE_LABELS: Record<string, string> = {
   text: 'Короткий текст',
@@ -50,9 +62,38 @@ export default function PoolEdit() {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)
 
+  const [categories, setCategories] = useState<any[]>([])
+  const [pub, setPub] = useState<any>({
+    name: '',
+    description: '',
+    visibility: 'private',
+    category: '',
+    tags: '',
+    cover_url: null,
+  })
+  const [pubMsg, setPubMsg] = useState('')
+  const [pubError, setPubError] = useState('')
+  const [pubBusy, setPubBusy] = useState(false)
+
   const load = () => api.get(`/pools/${id}`).then(r => setPool(r.data)).catch(() => setError('Не удалось загрузить пул'))
 
   useEffect(() => { load() }, [id])
+
+  useEffect(() => {
+    api.get('/library/meta').then(r => setCategories(r.data.categories || [])).catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    if (!pool) return
+    setPub({
+      name: pool.name || '',
+      description: pool.description || '',
+      visibility: pool.visibility || 'private',
+      category: pool.category || '',
+      tags: (pool.tags || []).join(', '),
+      cover_url: pool.cover_url || null,
+    })
+  }, [pool?.id])
 
   const isChoice = CHOICE_TYPES.includes(form.type)
 
@@ -159,6 +200,64 @@ export default function PoolEdit() {
     }
   }
 
+  const savePublication = async (visibilityOverride?: string) => {
+    setPubBusy(true)
+    setPubMsg('')
+    setPubError('')
+    try {
+      const payload = {
+        visibility: visibilityOverride || pub.visibility,
+        name: pub.name,
+        description: pub.description || null,
+        category: pub.category || null,
+        tags: pub.tags.split(',').map((t: string) => t.trim()).filter(Boolean),
+      }
+      const res = await api.put(`/pools/${id}/publication`, payload)
+      setPool({
+        ...pool,
+        name: pub.name,
+        description: pub.description,
+        visibility: res.data.visibility,
+        share_slug: res.data.share_slug,
+        category: res.data.category,
+        tags: res.data.tags,
+        published_at: res.data.published_at,
+      })
+      setPub({ ...pub, visibility: res.data.visibility })
+      setPubMsg(res.data.visibility === 'private' ? 'Пул снят с публикации' : 'Настройки публикации сохранены')
+      setTimeout(() => setPubMsg(''), 2500)
+    } catch (e: any) {
+      setPubError(e?.response?.data?.detail || 'Не удалось сохранить настройки публикации')
+    } finally {
+      setPubBusy(false)
+    }
+  }
+
+  const uploadCover = async (e: any) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setPubBusy(true)
+    setPubError('')
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await api.post(`/pools/${id}/cover`, fd, { headers: { 'Content-Type': 'multipart/form-data' } })
+      setPub({ ...pub, cover_url: res.data.cover_url })
+      setPool({ ...pool, cover_url: res.data.cover_url })
+    } catch (err: any) {
+      setPubError(err?.response?.data?.detail || 'Не удалось загрузить обложку')
+    } finally {
+      setPubBusy(false)
+    }
+  }
+
+  const copyShareLink = () => {
+    if (!pool?.share_slug) return
+    navigator.clipboard.writeText(`${publicBase}/library/${pool.share_slug}`)
+    setPubMsg('Ссылка скопирована')
+    setTimeout(() => setPubMsg(''), 2000)
+  }
+
   if (!pool) return <div className="p-4">{error || 'Загрузка...'}</div>
 
   return (
@@ -168,6 +267,95 @@ export default function PoolEdit() {
         <Link to="/pools" className="btn px-3 py-2">К пулам</Link>
       </header>
       <main className="max-w-4xl mx-auto px-4 space-y-4 pb-10">
+        {pool.origin && (
+          <div className="card p-4 text-sm opacity-80">
+            Создано на основе пула пользователя {pool.origin.author_name || 'неизвестного автора'}
+            {pool.origin.title ? ` «${pool.origin.title}»` : ''}
+            {pool.origin.available && pool.origin.share_slug && (
+              <> · <Link to={`/library/${pool.origin.share_slug}`} className="hover:underline">открыть оригинал</Link></>
+            )}
+          </div>
+        )}
+
+        <div className="card p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="font-semibold">Публикация в библиотеке</div>
+            <span className="text-xs px-2 py-0.5 rounded border-theme">{VISIBILITY_LABELS[pub.visibility]}</span>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-3">
+            <div>
+              <label className="block mb-1 text-sm opacity-80">Название</label>
+              <input className="input w-full px-3 py-2" value={pub.name} onChange={e => setPub({ ...pub, name: e.target.value })} />
+            </div>
+            <div>
+              <label className="block mb-1 text-sm opacity-80">Категория</label>
+              <select className="select w-full px-3 py-2" value={pub.category} onChange={e => setPub({ ...pub, category: e.target.value })}>
+                <option value="">Без категории</option>
+                {categories.map((category: any) => (
+                  <option key={category.id} value={category.id}>{category.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="block mb-1 text-sm opacity-80">Описание</label>
+            <textarea className="textarea w-full px-3 py-2" value={pub.description} onChange={e => setPub({ ...pub, description: e.target.value })} />
+          </div>
+
+          <div>
+            <label className="block mb-1 text-sm opacity-80">Теги (через запятую)</label>
+            <input className="input w-full px-3 py-2" placeholder="музыка, кино, игры" value={pub.tags} onChange={e => setPub({ ...pub, tags: e.target.value })} />
+          </div>
+
+          <div className="flex items-center gap-3 flex-wrap">
+            <div>
+              <label className="block mb-1 text-sm opacity-80">Обложка</label>
+              <input type="file" accept="image/*" onChange={uploadCover} />
+            </div>
+            {pub.cover_url && <img src={pub.cover_url} className="h-16 w-28 object-cover rounded" alt="" />}
+          </div>
+
+          <div className="space-y-2">
+            {(['private', 'unlisted', 'public'] as const).map(value => (
+              <label key={value} className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="radio"
+                  name="visibility"
+                  className="mt-1"
+                  checked={pub.visibility === value}
+                  onChange={() => setPub({ ...pub, visibility: value })}
+                />
+                <span>
+                  <span className="font-medium">{VISIBILITY_LABELS[value]}</span>
+                  <span className="block text-xs opacity-60">{VISIBILITY_HINTS[value]}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+
+          {pubError && <div className="text-danger text-sm">{pubError}</div>}
+          {pubMsg && <div className="text-success text-sm">{pubMsg}</div>}
+
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => savePublication()} disabled={pubBusy} className="btn px-3 py-2">
+              {pubBusy ? 'Сохраняем...' : 'Сохранить настройки'}
+            </button>
+            {pub.visibility !== 'private' && (
+              <button onClick={() => savePublication('private')} disabled={pubBusy} className="btn btn-secondary px-3 py-2">
+                Снять с публикации
+              </button>
+            )}
+            {pool.share_slug && pool.visibility !== 'private' && (
+              <button onClick={copyShareLink} className="btn btn-secondary px-3 py-2">Скопировать ссылку</button>
+            )}
+          </div>
+          {pool.share_slug && pool.visibility !== 'private' && (
+            <div className="text-xs break-all opacity-60">{publicBase}/library/{pool.share_slug}</div>
+          )}
+        </div>
+
         <div className="card p-4 space-y-3">
           <div className="font-semibold">{editingId ? 'Редактировать вопрос' : 'Добавить вопрос'}</div>
 

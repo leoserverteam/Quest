@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     RATE_LIMIT_UPLOAD: str = "20/hour"
     RATE_LIMIT_EDIT: str = "60/hour"
     RATE_LIMIT_AUTH: str = "20/hour"
+    RATE_LIMIT_COPY: str = "30/hour"
 
     QUESTIONS_CONFIG_PATH: str = "/app/config/questions.yaml"
     QUESTIONS_WATCH_ENABLED: bool = True

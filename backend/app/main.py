@@ -8,7 +8,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
 from app.core.rate_limit import limiter
-from app.api import profiles, auth, cabinet, pools, themes
+from app.api import profiles, auth, cabinet, pools, themes, library
 from app.db.base import Base
 from app.db.session import engine
 from app.services.questions import start_watcher
@@ -58,6 +58,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(cabinet.router, prefix="/api")
 app.include_router(pools.router, prefix="/api")
 app.include_router(themes.router, prefix="/api")
+app.include_router(library.router, prefix="/api")
 
 
 @app.get("/api/health")

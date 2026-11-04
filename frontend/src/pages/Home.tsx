@@ -6,6 +6,7 @@ export default function Home() {
       <header className="max-w-6xl mx-auto px-4 py-8 flex items-center justify-between">
         <div className="text-xl font-bold">Quest</div>
         <div className="flex gap-2">
+          <Link to="/library" className="btn btn-secondary px-4 py-2">Библиотека</Link>
           <Link to="/cabinet" className="btn px-4 py-2">Личный кабинет</Link>
           <Link to="/create" className="btn px-4 py-2">Создать анкету</Link>
         </div>

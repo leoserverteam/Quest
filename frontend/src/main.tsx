@@ -11,6 +11,8 @@ import Cabinet from './pages/Cabinet'
 import Pools from './pages/Pools'
 import PoolEdit from './pages/PoolEdit'
 import Themes from './pages/Themes'
+import Library from './pages/Library'
+import LibraryPool from './pages/LibraryPool'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -24,6 +26,8 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/pools" element={<Pools />} />
         <Route path="/pools/:id" element={<PoolEdit />} />
         <Route path="/themes" element={<Themes />} />
+        <Route path="/library" element={<Library />} />
+        <Route path="/library/:slug" element={<LibraryPool />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

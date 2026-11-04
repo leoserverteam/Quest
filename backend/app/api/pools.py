@@ -1,17 +1,23 @@
+import os
 import re
 import uuid
 from datetime import datetime
 from typing import Any, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+import magic
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from PIL import Image
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.core.session import get_current_user, require_user
+from app.core.utils import ensure_dir
 from app.db.session import get_db
 from app.models.user import User
-from app.models.pools import QuestionPool, QuestionPoolItem, ProfileQuestionPool
+from app.models.pools import PoolAdd, QuestionPool, QuestionPoolItem, ProfileQuestionPool
 from app.models.profile import Profile
 from app.services.questions import (
     CHOICE_TYPES,
@@ -20,6 +26,16 @@ from app.services.questions import (
     normalize_question_type,
 )
 from app.services.profile_questions import make_snapshot, snapshot_items, snapshot_name
+from app.services.library import (
+    VISIBILITY_PUBLIC,
+    generate_share_slug,
+    normalize_category,
+    normalize_tags,
+    normalize_visibility,
+    serialize_item,
+    serialize_origin,
+    visibility_of,
+)
 from app.api.deps import get_profile_by_edit_token
 
 router = APIRouter()
@@ -59,28 +75,6 @@ def _ensure_profile_owner(profile: Profile, user: User, db: Session) -> None:
         return
     if profile.user_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
-
-
-def _serialize_item(item: QuestionPoolItem) -> dict:
-    qtype = item.type
-    options = item.options
-    try:
-        qtype = normalize_question_type(item.type)
-        if qtype in CHOICE_TYPES:
-            options = normalize_options(item.options)
-    except QuestionValidationError:
-        # Keep legacy/invalid data visible so it can be fixed in the editor.
-        pass
-    return {
-        "id": str(item.id),
-        "item_id": item.item_id,
-        "title": item.title,
-        "description": item.description,
-        "type": qtype,
-        "required": bool(item.required),
-        "options": options,
-        "position": item.position or 0,
-    }
 
 
 def _serialize_link(link: ProfileQuestionPool) -> dict:
@@ -217,6 +211,15 @@ def list_pools(user: User = Depends(require_user), db: Session = Depends(get_db)
                 "description": p.description,
                 "count": len(p.items),
                 "is_public": bool(p.is_public),
+                "visibility": visibility_of(p),
+                "share_slug": p.share_slug,
+                "category": p.category,
+                "tags": list(p.tags or []),
+                "cover_url": p.cover_url,
+                "views_count": int(p.views_count or 0),
+                "adds_count": int(p.adds_count or 0),
+                "published_at": p.published_at.isoformat() if p.published_at else None,
+                "origin": serialize_origin(db, p),
             }
         )
     return res
@@ -241,8 +244,23 @@ def create_pool(data: dict, user: User = Depends(require_user), db: Session = De
 @router.get("/pools/{pool_id}")
 def get_pool(pool_id: str, user: User = Depends(require_user), db: Session = Depends(get_db)):
     pool = _owned_pool(pool_id, user, db)
-    items = [_serialize_item(it) for it in sorted(pool.items, key=lambda x: (x.position or 0, str(x.id)))]
-    return {"id": str(pool.id), "name": pool.name, "description": pool.description, "items": items}
+    items = [serialize_item(it) for it in sorted(pool.items, key=lambda x: (x.position or 0, str(x.id)))]
+    return {
+        "id": str(pool.id),
+        "name": pool.name,
+        "description": pool.description,
+        "items": items,
+        "visibility": visibility_of(pool),
+        "is_public": bool(pool.is_public),
+        "share_slug": pool.share_slug,
+        "category": pool.category,
+        "tags": list(pool.tags or []),
+        "cover_url": pool.cover_url,
+        "views_count": int(pool.views_count or 0),
+        "adds_count": int(pool.adds_count or 0),
+        "published_at": pool.published_at.isoformat() if pool.published_at else None,
+        "origin": serialize_origin(db, pool),
+    }
 
 
 @router.put("/pools/{pool_id}")
@@ -260,9 +278,132 @@ def update_pool(pool_id: str, data: dict, user: User = Depends(require_user), db
     return {"ok": True}
 
 
+@router.put("/pools/{pool_id}/publication")
+@limiter.limit(settings.RATE_LIMIT_EDIT)
+def update_publication(
+    request: Request,
+    pool_id: str,
+    data: dict,
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    """Owner-only visibility and publication metadata management."""
+    pool = _owned_pool(pool_id, user, db)
+
+    try:
+        visibility = normalize_visibility(data.get("visibility", visibility_of(pool)))
+        category = pool.category
+        if "category" in data:
+            category = normalize_category(data.get("category"))
+        tags, tags_text = list(pool.tags or []), pool.tags_text
+        if "tags" in data:
+            tags, tags_text = normalize_tags(data.get("tags"))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if data.get("name") is not None:
+        name = data["name"]
+        if not isinstance(name, str) or not name.strip():
+            raise HTTPException(status_code=400, detail="Pool name is required")
+        pool.name = name.strip()[:128]
+
+    if data.get("description") is not None:
+        description = data["description"]
+        if description is not None and not isinstance(description, str):
+            raise HTTPException(status_code=400, detail="Description must be a string")
+        pool.description = description
+
+    if "cover_url" in data:
+        cover_url = data.get("cover_url")
+        if cover_url is not None and not isinstance(cover_url, str):
+            raise HTTPException(status_code=400, detail="Invalid cover_url")
+        pool.cover_url = cover_url
+
+    if visibility != "private":
+        if not pool.items:
+            raise HTTPException(status_code=400, detail="Добавьте хотя бы один вопрос перед публикацией")
+        if not pool.share_slug:
+            pool.share_slug = generate_share_slug(db)
+        if not pool.published_at:
+            pool.published_at = datetime.utcnow()
+
+    pool.visibility = visibility
+    pool.is_public = visibility == VISIBILITY_PUBLIC
+    pool.category = category
+    pool.tags = tags
+    pool.tags_text = tags_text
+    pool.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(pool)
+    return {
+        "ok": True,
+        "visibility": pool.visibility,
+        "share_slug": pool.share_slug,
+        "category": pool.category,
+        "tags": list(pool.tags or []),
+        "published_at": pool.published_at.isoformat() if pool.published_at else None,
+    }
+
+
+@router.post("/pools/{pool_id}/cover")
+@limiter.limit(settings.RATE_LIMIT_UPLOAD)
+def upload_pool_cover(
+    request: Request,
+    pool_id: str,
+    file: UploadFile = File(...),
+    user: User = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    pool = _owned_pool(pool_id, user, db)
+    ensure_dir(settings.UPLOAD_DIR)
+    content = file.file.read()
+    if len(content) > settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large")
+
+    mime = magic.from_buffer(content, mime=True)
+    if mime not in settings.allowed_mimes_list:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in [".jpg", ".jpeg", ".png", ".webp", ".gif"]:
+        raise HTTPException(status_code=400, detail="Invalid extension")
+
+    try:
+        from io import BytesIO
+
+        Image.open(BytesIO(content)).verify()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid image")
+
+    fname = f"pool_{uuid.uuid4().hex}{ext}"
+    with open(os.path.join(settings.UPLOAD_DIR, fname), "wb") as f:
+        f.write(content)
+
+    pool.cover_url = f"/uploads/{fname}"
+    db.commit()
+    return {"ok": True, "cover_url": pool.cover_url}
+
+
 @router.delete("/pools/{pool_id}")
 def delete_pool(pool_id: str, user: User = Depends(require_user), db: Session = Depends(get_db)):
     pool = _owned_pool(pool_id, user, db)
+    if pool.source_pool_id:
+        # Removing a library copy also removes the "added" record so the
+        # source statistics stay accurate.
+        add = (
+            db.query(PoolAdd)
+            .filter(PoolAdd.pool_id == pool.source_pool_id, PoolAdd.user_id == user.id)
+            .first()
+        )
+        if add:
+            db.delete(add)
+            source = (
+                db.query(QuestionPool)
+                .filter(QuestionPool.id == pool.source_pool_id)
+                .first()
+            )
+            if source:
+                source.adds_count = max(0, int(source.adds_count or 0) - 1)
     db.delete(pool)
     db.commit()
     return {"ok": True}
@@ -287,7 +428,7 @@ def add_item(pool_id: str, data: dict, user: User = Depends(require_user), db: S
     db.add(item)
     db.commit()
     db.refresh(item)
-    return _serialize_item(item)
+    return serialize_item(item)
 
 
 @router.put("/pools/{pool_id}/items/{item_id}")
@@ -317,7 +458,7 @@ def update_item(pool_id: str, item_id: str, data: dict, user: User = Depends(req
     item.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(item)
-    return _serialize_item(item)
+    return serialize_item(item)
 
 
 @router.delete("/pools/{pool_id}/items/{item_id}")
@@ -413,6 +554,8 @@ def get_edit_pools(
                     "description": pool.description,
                     "count": len(pool.items),
                     "is_public": bool(pool.is_public),
+                    "visibility": visibility_of(pool),
+                    "origin": serialize_origin(db, pool),
                     "attached": str(pool.id) in attached_pool_ids,
                 }
             )

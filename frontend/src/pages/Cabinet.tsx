@@ -63,8 +63,9 @@ export default function Cabinet() {
             <button onClick={attach} className="btn px-3 py-2">Привязать старую анкету</button>
           </div>
         </section>
-        <section className="grid md:grid-cols-3 gap-4">
+        <section className="grid md:grid-cols-4 gap-4">
           <Link to="/pools" className="card p-6 hover:opacity-90">Мои пулы вопросов ({data?.pools_count || 0})</Link>
+          <Link to="/library" className="card p-6 hover:opacity-90">Библиотека вопросов</Link>
           <Link to="/themes" className="card p-6 hover:opacity-90">Мои оформления ({data?.themes_count || 0})</Link>
           <Link to="/create" className="card p-6 hover:opacity-90">Создать новую анкету</Link>
         </section>

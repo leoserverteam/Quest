@@ -47,6 +47,91 @@ def apply_fallback_migrations():
             except Exception:
                 pass
 
+        # Public question library: publication fields on pools.
+        for col, typ in [
+            ("visibility", "VARCHAR(16) NOT NULL DEFAULT 'private'"),
+            ("category", "VARCHAR(32)"),
+            ("tags", "JSON"),
+            ("tags_text", "VARCHAR(512)"),
+            ("cover_url", "TEXT"),
+            ("share_slug", "VARCHAR(32)"),
+            ("published_at", "TIMESTAMP"),
+            ("views_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("adds_count", "INTEGER NOT NULL DEFAULT 0"),
+            ("source_pool_id", "UUID"),
+            ("source_author_id", "UUID"),
+            ("source_pool_name", "VARCHAR(128)"),
+            ("source_author_name", "VARCHAR(128)"),
+            ("copied_at", "TIMESTAMP"),
+        ]:
+            conn.execute(
+                text(f"ALTER TABLE question_pools ADD COLUMN IF NOT EXISTS {col} {typ}")
+            )
+
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS ix_question_pools_share_slug "
+                "ON question_pools (share_slug)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_pool_user_source "
+                "ON question_pools (user_id, source_pool_id) "
+                "WHERE source_pool_id IS NOT NULL"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_question_pools_visibility "
+                "ON question_pools (visibility)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_question_pools_category "
+                "ON question_pools (category)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_question_pools_source_pool_id "
+                "ON question_pools (source_pool_id)"
+            )
+        )
+
+        conn.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS pool_views ("
+                "id UUID PRIMARY KEY, "
+                "pool_id UUID NOT NULL REFERENCES question_pools(id) ON DELETE CASCADE, "
+                "viewer_key VARCHAR(80) NOT NULL, "
+                "created_at TIMESTAMP, "
+                "CONSTRAINT uq_pool_view UNIQUE (pool_id, viewer_key))"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS ix_pool_views_pool_id ON pool_views (pool_id)"
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE TABLE IF NOT EXISTS pool_adds ("
+                "id UUID PRIMARY KEY, "
+                "pool_id UUID NOT NULL REFERENCES question_pools(id) ON DELETE CASCADE, "
+                "user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE, "
+                "created_at TIMESTAMP, "
+                "CONSTRAINT uq_pool_add UNIQUE (pool_id, user_id))"
+            )
+        )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_pool_adds_pool_id ON pool_adds (pool_id)")
+        )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS ix_pool_adds_user_id ON pool_adds (user_id)")
+        )
+
         # `open_to_chat` used to be a boolean question.  Adapt old answers to
         # the new single-choice values without losing their meaning.
         try:
