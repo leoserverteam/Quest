@@ -31,8 +31,32 @@ export default function LibraryPool() {
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    api.get('/auth/me').then(r => setUser(r.data.user)).catch(() => setUser(null))
-  }, [])
+    api.get('/auth/me').then(r => {
+      setUser(r.data.user)
+      try {
+        const pending = localStorage.getItem('quest_pending_action')
+        if (pending && r.data.user) {
+          const p = JSON.parse(pending)
+          if (p.type === 'add_pool' && p.slug === slug) {
+            localStorage.removeItem('quest_pending_action')
+            setTimeout(() => {
+              api.post(`/library/pools/${slug}/copy`).then(res => {
+                setMsg(res.data.message)
+                setData((d: any) => d ? {
+                  ...d,
+                  is_added: true,
+                  adds_count: (d.adds_count || 0) + (res.data.created ? 1 : 0),
+                  users_count: (d.users_count || d.adds_count || 0) + (res.data.created ? 1 : 0),
+                } : d)
+              }).catch(() => {})
+            }, 100)
+          } else {
+            localStorage.removeItem('quest_pending_action')
+          }
+        }
+      } catch {}
+    }).catch(() => setUser(null))
+  }, [slug])
 
   useEffect(() => {
     api.get(`/library/pools/${slug}`)
@@ -43,6 +67,9 @@ export default function LibraryPool() {
   }, [slug])
 
   const loginVk = async () => {
+    try {
+      localStorage.setItem('quest_pending_action', JSON.stringify({ type: 'add_pool', slug }))
+    } catch {}
     const res = await api.get('/auth/vk/login')
     if (res.data.url) window.location.href = res.data.url
   }
@@ -91,11 +118,14 @@ export default function LibraryPool() {
     <div className="min-h-screen">
       <header className="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between gap-3 flex-wrap">
         <Link to="/library" className="btn btn-secondary px-3 py-2">← Библиотека</Link>
-        <button onClick={copyLink} className="btn btn-secondary px-3 py-2">Скопировать ссылку</button>
+        <div className="flex gap-2">
+          <button onClick={copyLink} className="btn btn-secondary px-3 py-2">Поделиться</button>
+          <button onClick={copyLink} className="btn btn-secondary px-3 py-2">Скопировать ссылку</button>
+        </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 pb-12 space-y-5">
-        {msg && <div className="text-success">{msg}</div>}
+        {msg && <div className="text-success">{msg}{(msg.includes('уже') || msg.toLowerCase().includes('коллекци')) ? <span> · <Link to="/pools" className="hover:underline">Перейти к копии в «Мои пулы»</Link></span> : <span> · <Link to="/pools" className="hover:underline">Перейти в «Мои пулы»</Link></span>}</div>}
         {error && <div className="text-danger">{error}</div>}
 
         <section className="card overflow-hidden">

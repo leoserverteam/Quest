@@ -28,6 +28,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/themes" element={<Themes />} />
         <Route path="/library" element={<Library />} />
         <Route path="/library/:slug" element={<LibraryPool />} />
+        <Route path="/pool/:slug" element={<LibraryPool />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

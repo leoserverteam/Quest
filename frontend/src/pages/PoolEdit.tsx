@@ -74,6 +74,7 @@ export default function PoolEdit() {
   const [pubMsg, setPubMsg] = useState('')
   const [pubError, setPubError] = useState('')
   const [pubBusy, setPubBusy] = useState(false)
+  const [shareOpen, setShareOpen] = useState(false)
 
   const load = () => api.get(`/pools/${id}`).then(r => setPool(r.data)).catch(() => setError('Не удалось загрузить пул'))
 
@@ -253,7 +254,7 @@ export default function PoolEdit() {
 
   const copyShareLink = () => {
     if (!pool?.share_slug) return
-    navigator.clipboard.writeText(`${publicBase}/library/${pool.share_slug}`)
+    navigator.clipboard.writeText(`${publicBase}/pool/${pool.share_slug}`)
     setPubMsg('Ссылка скопирована')
     setTimeout(() => setPubMsg(''), 2000)
   }
@@ -348,11 +349,52 @@ export default function PoolEdit() {
               </button>
             )}
             {pool.share_slug && pool.visibility !== 'private' && (
-              <button onClick={copyShareLink} className="btn btn-secondary px-3 py-2">Скопировать ссылку</button>
+              <>
+                <button onClick={() => setShareOpen(true)} className="btn btn-secondary px-3 py-2">Поделиться</button>
+                <button onClick={copyShareLink} className="btn btn-secondary px-3 py-2">Скопировать ссылку</button>
+              </>
             )}
           </div>
           {pool.share_slug && pool.visibility !== 'private' && (
-            <div className="text-xs break-all opacity-60">{publicBase}/library/{pool.share_slug}</div>
+            <div className="text-xs break-all opacity-60">{publicBase}/pool/{pool.share_slug}</div>
+          )}
+
+          {shareOpen && pool.share_slug && pool.visibility !== 'private' && (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setShareOpen(false)}>
+              <div className="card p-4 max-w-md w-full space-y-3" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center justify-between">
+                  <div className="font-semibold">Поделиться пулом</div>
+                  <button className="btn btn-secondary px-2 py-1" onClick={() => setShareOpen(false)}>×</button>
+                </div>
+                <div className="text-sm opacity-80">Ссылка на пул</div>
+                <div className="text-xs break-all p-2 rounded border-theme">{publicBase}/pool/{pool.share_slug}</div>
+                <div className="text-sm">Текущий режим доступа: <b>{VISIBILITY_LABELS[pub.visibility]}</b></div>
+                <div className="space-y-2">
+                  {(['unlisted', 'public'] as const).map(value => (
+                    <label key={value} className="flex items-start gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="share-visibility"
+                        className="mt-1"
+                        checked={pub.visibility === value}
+                        onChange={async () => {
+                          await savePublication(value)
+                        }}
+                      />
+                      <span>
+                        <span className="font-medium">{VISIBILITY_LABELS[value]}</span>
+                        <span className="block text-xs opacity-60">{VISIBILITY_HINTS[value]}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={copyShareLink} className="btn px-3 py-2">Скопировать ссылку</button>
+                  <button onClick={() => setShareOpen(false)} className="btn btn-secondary px-3 py-2">Закрыть</button>
+                </div>
+                {pubMsg && <div className="text-success text-sm">{pubMsg}</div>}
+              </div>
+            </div>
           )}
         </div>
 

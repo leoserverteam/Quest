@@ -194,9 +194,9 @@ def copy_library_pool(
 
     copied, created = copy_pool_to_user(db, pool, user)
     message = (
-        "Пул добавлен в ваши пулы"
+        "Пул добавлен"
         if created
-        else "Этот пул уже есть в ваших пулах"
+        else "Этот пул уже есть в ваших коллекциях"
     )
     return {
         "ok": True,
